@@ -249,21 +249,39 @@ python scripts/index_trial_documents.py \
 ### Step 2: plan the batch (M4)
 
 ```bash
+PLAN=census-work/plans/next_batch_plan.json
+RUN="census-work/runs/$(basename "$PLAN" .json)"
 mkdir -p census-work/plans
-python scripts/verify_and_plan_census_batch.py plan \
-  --index "$INDEX" \
-  --documents census-work/<corpus>/documents.jsonl \
-  --locations census-work/<corpus>/locations.jsonl \
-  --doc-cache data/document_index_by_sha256.jsonl \
-  --profiles data/trial_document_profiles.jsonl \
-  --pages-dir data/document_cache/pages \
-  --mode resume-unstarted \
-  --shard-size 18 \
-  --budget-cap-usd 50.00 \
-  --cost-schedule sliced \
-  --out-plan census-work/plans/next_batch_plan.json
+if [ -e "$PLAN" ] || [ -e "$RUN" ]; then
+  echo "STOP: $PLAN or $RUN exists; give this run's plan a new file name" >&2
+  false
+else
+  python scripts/verify_and_plan_census_batch.py plan \
+    --index "$INDEX" \
+    --documents census-work/<corpus>/documents.jsonl \
+    --locations census-work/<corpus>/locations.jsonl \
+    --doc-cache data/document_index_by_sha256.jsonl \
+    --profiles data/trial_document_profiles.jsonl \
+    --pages-dir data/document_cache/pages \
+    --mode resume-unstarted \
+    --shard-size 18 \
+    --budget-cap-usd 50.00 \
+    --cost-schedule sliced \
+    --out-plan "$PLAN"
+fi
 ```
 
+- `$PLAN` names the run. M4's plan carries no id of its own, so the plan
+  file's stem names the run's folder, `$RUN` (here
+  `census-work/runs/next_batch_plan/`). Steps 3 to 6 keep this run's shards,
+  merged corpus and build report there and read no other run's. Give every
+  run's plan a file name no earlier run has used: shard ids repeat from run
+  to run (`<mode>-<pass role>-shard-01` begins every plan of a mode), so a
+  reused name would put a new run's rows into an earlier run's shard
+  folders. The `if` does not plan when `$PLAN` or `$RUN` already exists, so
+  an earlier run's plan is never overwritten. To plan the same run again
+  before any worker has started (after changing an input, say), delete
+  `$PLAN` first.
 - `<corpus>` is a set of rows that carries the F6 stamps (section 0.3).
   While the existing census cannot be given, leave out `--documents`,
   `--locations` and `--pages-dir` (without `--locations` it changes nothing
@@ -356,10 +374,10 @@ python scripts/verify_and_plan_census_batch.py plan \
 
 ### Step 3: extraction (outside this repository)
 
-Each worker takes one shard (`shard_id`, `nct_ids`, `doc_set_fingerprints`;
-for `ocr_recovery`, `target_elements_by_nct`) and writes its rows to
-`census-work/shards/<shard_id>/locations.jsonl`, next to the shard's
-`documents.jsonl`. No CLI writes that documents file: M1's
+Each worker takes one shard of `$PLAN` (`shard_id`, `nct_ids`,
+`doc_set_fingerprints`; for `ocr_recovery`, `target_elements_by_nct`) and
+writes its rows to `$RUN/shards/<shard_id>/locations.jsonl`, next to the
+shard's `documents.jsonl`. No CLI writes that documents file: M1's
 `to_legacy_census_document_row` turns each document record of a trial's
 profile into a `documents.jsonl` row, stamped by default with `model_id`
 `deterministic_indexer` and `profile_version` set to M1's
@@ -380,13 +398,12 @@ them with the model it ran on.
 `--index` and of no `in_audit: true` row: `verify` builds the expected grid
 from the `in_audit: false` rows alone. So verify a shard against an index
 that holds the shard's `in_audit: false` rows and every `in_audit: true` row
-of the index:
+of the index (`$PLAN` and `$RUN` are step 2's):
 
 ```bash
 SHARD=resume-unstarted-primary-shard-01
-mkdir -p "census-work/shards/$SHARD"
-python - "$INDEX" census-work/plans/next_batch_plan.json "$SHARD" \
-  > "census-work/shards/$SHARD/index.json" <<'EOF'
+mkdir -p "$RUN/shards/$SHARD"
+python - "$INDEX" "$PLAN" "$SHARD" > "$RUN/shards/$SHARD/index.json" <<'EOF'
 import json, sys
 from pathlib import Path
 from scripts.verify_and_plan_census_batch import load_index_rows
@@ -408,20 +425,20 @@ print(json.dumps({"rows": rows}))
 EOF
 
 python scripts/verify_and_plan_census_batch.py verify \
-  --index "census-work/shards/$SHARD/index.json" \
-  --documents "census-work/shards/$SHARD/documents.jsonl" \
-  --locations "census-work/shards/$SHARD/locations.jsonl" \
+  --index "$RUN/shards/$SHARD/index.json" \
+  --documents "$RUN/shards/$SHARD/documents.jsonl" \
+  --locations "$RUN/shards/$SHARD/locations.jsonl" \
   --pages-dir data/document_cache/pages \
   --check-completeness \
-  --report-out "census-work/shards/$SHARD/verify_report.json"
+  --report-out "$RUN/shards/$SHARD/verify_report.json"
 ```
 
 - The slice reads the index with M4's `load_index_rows`, as step 2's filter
   does, so run it from the root of the checkout; it takes every form
   `--index` takes (rows under `rows`, `data` or `trials`, a bare list,
-  JSONL). It stops (exit 1) when a shard id is not in the plan or a trial of
+  JSONL). It stops (exit 1) when a shard id is not in `$PLAN` or a trial of
   the shard is not an `in_audit: false` row of the index it is given. It
-  takes one or more shard ids after the plan.
+  takes one or more shard ids after `$PLAN`.
 - The `in_audit: true` rows keep the holdout set `verify` checks against
   populated, so a holdout trial in a shard's rows is refused as a holdout
   trial (exit 2), not only as a trial missing from the index. The slice
@@ -441,17 +458,46 @@ python scripts/verify_and_plan_census_batch.py verify \
 
 ### Step 5: combine, append-only
 
+The shards to combine are the ones `$PLAN` lists, not whatever a pattern
+over the shard folders finds, so no other run's shards are taken in:
+
 ```bash
-mkdir -p census-work/merged
-cat census-work/<corpus>/locations.jsonl census-work/shards/*/locations.jsonl \
-  > census-work/merged/locations.jsonl
+mkdir -p "$RUN/merged"
+python - "$PLAN" "$RUN" census-work/<corpus> <<'EOF'
+import json, sys
+from pathlib import Path
+plan, run, corpora = sys.argv[1], Path(sys.argv[2]), sys.argv[3:]
+shard_ids = [s["shard_id"] for s in json.load(open(plan))["shards"] if s["within_budget_cap"]]
+for shard_id in shard_ids:
+    report = run / "shards" / shard_id / "verify_report.json"
+    if not report.is_file() or json.load(open(report))["ok"] is not True:
+        sys.exit(f"{shard_id} has not landed (no ok verify report); nothing merged")
+for name in ("documents.jsonl", "locations.jsonl"):
+    sources = [Path(c) / name for c in corpora]
+    sources += [run / "shards" / shard_id / name for shard_id in shard_ids]
+    with open(run / "merged" / name, "wb") as out:
+        for src in sources:
+            out.write(src.read_bytes())
+print(f"merged {len(shard_ids)} shard(s) of {plan}")
+EOF
 ```
 
-Do the same for documents, then verify the combined corpus (step 4's
-`verify`, with `--index` limited to the trials the corpus is meant to cover,
-since `--check-completeness` reports `TRIAL_GRID_MISSING_CELL` for every
-in-scope index trial without a full `primary` grid). Never write the combined
-corpus into a tracked file or a public branch.
+- It takes the shards of `$PLAN` marked `within_budget_cap` (every shard
+  when the plan is within the cap) and stops, writing nothing, unless each
+  of them has landed in step 4 with an `ok` report.
+- `census-work/<corpus>` is an earlier corpus that carries the F6 stamps
+  (section 0.3); its rows go first. Leave it out while there is none, as in
+  the census case.
+- Then verify the combined corpus with step 4's `verify` on
+  `$RUN/merged/documents.jsonl` and `$RUN/merged/locations.jsonl`. Build its
+  `--index` with step 4's slice, giving it every merged shard id after
+  `"$PLAN"` and writing to `$RUN/merged/index.json`, since
+  `--check-completeness` reports `TRIAL_GRID_MISSING_CELL` for every
+  `in_audit: false` index trial without a full `primary` grid. When the
+  merge includes a `<corpus>`, the index must also hold its trials' rows,
+  which the slice does not add.
+
+Never write the combined corpus into a tracked file or a public branch.
 
 ### Step 6: outcomes bundles (M3; unmerged, local only)
 
@@ -460,15 +506,14 @@ is published. A bundle built from it is a local file tree, gitignored on the
 m3 branch, and nothing copies it to the site:
 
 ```bash
-mkdir -p census-work/reports
 python scripts/build_outcomes_shards.py \
   --cohort-manifest "$INDEX" \
   --manifest-cohort industry_outcomes_beta \
   --extracted-at <extracted-at> \
   --documents data/trial_document_profiles.jsonl \
-  --locations census-work/merged/locations.jsonl \
+  --locations "$RUN/merged/locations.jsonl" \
   --out-dir data/outcomes_bundles \
-  --report census-work/reports/outcomes_build_report.json
+  --report "$RUN/outcomes_build_report.json"
 
 python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-manifest "$INDEX"
 ```
@@ -512,7 +557,10 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
    else, so the tools refuse those trials wherever they appear. Do not
    compute anything else for them.
 3. Run step 1 with `--manifest` set to that file, then step 2 with the
-   manifest as `--index`, `--cohort <slug>` and `--mode incremental-delta`.
+   manifest as `--index`, `--cohort <slug>`, `--mode incremental-delta` and
+   a plan file name of its own, such as
+   `PLAN=census-work/plans/cohort_<slug>_plan.json` (so that `$RUN` is
+   `census-work/runs/cohort_<slug>_plan`).
    Filter `--profiles` and `--doc-cache` to the manifest first with step 2's
    filter (the manifest as its first argument, two new output paths under
    `census-work/`) and pass the copies: the document index still holds the
@@ -524,12 +572,13 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
    content-addressed cache, but see rule 2 of section 1 for what that means
    for verification.
 4. Run steps 3 to 6 within `--budget-cap-usd`, with every output under
-   `census-work/`. In step 4, give the slice the cohort manifest as its
-   first argument, in place of `"$INDEX"`. A cohort trial that is not in
-   the site index has no row there, so a slice of the site index stops
-   (exit 1) rather than give `verify` an index without it. The manifest
-   holds a row for every cohort trial and the holdout rows of item 2, so
-   the holdout set stays populated. In step 6, pass the cohort manifest as
+   `$RUN`. In step 4, give the slice the cohort manifest as its first
+   argument, in place of `"$INDEX"`, and do the same for step 5's combined
+   index. A cohort trial that is not in the site index has no row there, so
+   a slice of the site index stops (exit 1) rather than give `verify` an
+   index without it. The manifest holds a row for every cohort trial and
+   the holdout rows of item 2, so the holdout set stays populated. In
+   step 6, pass the cohort manifest as
    `--cohort-manifest` together with `--manifest-cohort <slug>`: a holdout
    row that holds only `nct_id` and `in_audit` has no cohort of its own, and
    the builder refuses a trial that resolves to none (exit 1).
