@@ -25,6 +25,48 @@ def test_conflicting_rules_raise_unless_all_shared():
     assert sorted(idx.canonical) == ["Merck & Co", "Pfizer"] and set(idx.shared) == {"yes"}
 
 
+def test_a_second_rule_for_the_same_canonical_keeps_its_shared_no() -> None:
+    # match_literals' _assign used to return early when a second,
+    # lower-precedence rule claimed a literal for a canonical that already
+    # held it, dropping that rule's shared value. A literal claimed by one
+    # rule with shared=yes and another with shared=no stayed "yes", so another
+    # canonical's shared=yes claim passed the all-shared conflict check. The
+    # first rule is kept as match_rule; shared is "yes" only when both say yes.
+    # (Mirrors the ecosystem-layer fix, test_ecosystem.py on the M2 branch.)
+    lit = "Fictional Pharma & Example Bio"
+    norm = "fictional pharma and example bio"
+    sp = frame([("NCT99000001", "INDUSTRY", "lead", lit)])
+    uniq = sr.literal_universe(sp)
+    a_yes = ("Fictional Pharma", "exact_literal", lit, "attribute", "yes", NOTE)
+    a_no = ("Fictional Pharma", "exact_normalized", norm, "attribute", "no", NOTE)
+
+    one = rules_df([a_yes, a_no])
+    matched = sr.match_literals(uniq, one)
+    assert matched[["canonical", "match_rule", "shared"]].values.tolist() == [
+        ["Fictional Pharma", "exact_literal", "no"]
+    ]
+    assert sr.build_index(sp, one)["shared"].tolist() == ["no"]
+
+    # Another canonical claims the literal after the shared=no rule: the
+    # all-shared check now sees "no" and raises.
+    b_later = ("Example Bio", "exact_normalized", norm, "attribute", "yes", NOTE)
+    with pytest.raises(ValueError, match="conflicting rules for literal 'Fictional Pharma & Example Bio'"):
+        sr.match_literals(uniq, rules_df([a_yes, a_no, b_later]))
+    # Another canonical claims it before the shared=no rule is applied: the
+    # merge itself exposes the conflict and raises.
+    b_earlier = ("Example Bio", "exact_literal", lit, "attribute", "yes", NOTE)
+    with pytest.raises(ValueError, match=r"conflicting rules .* \(via exact_normalized, shared=no\)"):
+        sr.match_literals(uniq, rules_df([a_yes, b_earlier, a_no]))
+
+    # Every claiming rule shared=yes: the partnership composes as before.
+    all_yes = rules_df([a_yes, a_no, b_later]).assign(shared="yes")
+    out = sr.match_literals(uniq, all_yes).sort_values("canonical")
+    assert out[["canonical", "match_rule", "shared"]].values.tolist() == [
+        ["Example Bio", "exact_normalized", "yes"],
+        ["Fictional Pharma", "exact_literal", "yes"],
+    ]
+
+
 def test_partnership_literal_under_both_companies(shipped_rules):
     sp = frame([("NCT9", "INDUSTRY", "lead", "Bristol-Meyers Squibb & Pfizer")])
     idx = sr.build_index(sp, shipped_rules)
