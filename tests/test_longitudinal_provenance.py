@@ -16,6 +16,7 @@ from src.citation_verifier import (
 from src.longitudinal_provenance import (
     AuditHoldoutViolationError,
     LONGITUDINAL_SCHEMA_VERSION,
+    LinkedPublicationMilestone,
     PROVENANCE_RULES_VERSION,
     PROVENANCE_SCHEMA_VERSION,
     PublicationProvider,
@@ -1063,3 +1064,118 @@ def test_m4_f442_provenance_unjoined_extracted_document_needs_a_type() -> None:
         ],
     )
     assert "Prot_778.pdf" in {doc["filename"] for doc in record["large_docs"]}
+
+
+# ---------------------------------------------------------------------------
+# Round-7 regression (Codex r4680906551; fictional NCT99800001..NCT99899999 only).
+# ---------------------------------------------------------------------------
+
+_R7_PUBLICATION_KEYS: frozenset[str] = frozenset(LinkedPublicationMilestone.__annotations__)
+
+
+def _r7_publication(record: Mapping[str, Any], *, pmid: str | None = None, title: str | None = None) -> dict[str, Any]:
+    """The one linked publication of ``record`` with ``pmid`` (or, with no PMID, ``title``)."""
+    found = [
+        pub
+        for pub in record["linked_publications"]
+        if (pmid is not None and pub["pmid"] == pmid) or (pmid is None and pub["title"] == title)
+    ]
+    assert len(found) == 1, (pmid, title, record["linked_publications"])
+    return found[0]
+
+
+def test_m4_r7_provenance_explicit_doi_must_match_the_doi_grammar() -> None:
+    """An explicit DOI that is not a DOI (a placeholder) is dropped and counted, not linked.
+
+    ``_clean_doi`` stripped resolver prefixes and trailing punctuation but read
+    no grammar, so an explicit ``doi`` of ``"N/A"`` was recorded as the DOI
+    ``"n/a"``, and since ``_ingest_entry`` accepts a DOI alone, a record whose
+    only identifier was that placeholder became a linked publication. A
+    ``"doi:"`` label with nothing after it was read as no DOI given. Correct:
+    after normalisation an explicit DOI must fully match the DOI grammar
+    (``_EXPLICIT_DOI_RE``: ``10.<4-9 ASCII digits>/<non-space suffix>``); a value that does not is not
+    used, and the record counts it in ``dropped_malformed_doi_count``, so the
+    absence carries its reason. A missing, null or blank DOI is absence, not
+    counted. The layout projection's key set (and each publication's) is
+    unchanged.
+    """
+    record = _rt_f442_assemble(
+        _sample_study(nct_id=RT_SCOPE_ID),
+        pubmed_records=[
+            # A placeholder beside a PMID: the PMID still links the publication.
+            {"pmid": "40000011", "doi": "N/A", "title": "Placeholder DOI"},
+            # A label with nothing after it.
+            {"pmid": "40000012", "doi": "doi:", "title": "Empty after the doi: prefix"},
+            # A valid DOI behind a resolver prefix, with trailing punctuation.
+            {"pmid": "40000013", "doi": "https://doi.org/10.1000/ABC.123.", "title": "Valid DOI"},
+            # A placeholder, while the citation text holds a DOI: the citation's is used.
+            {
+                "pmid": "40000014",
+                "doi": "none",
+                "title": "DOI in the citation",
+                "citation": "Doe A. Example. 2022. doi:10.1000/cit.7",
+            },
+            # Absence: no DOI given, not a malformed one.
+            {"pmid": "40000015", "doi": None, "title": "Null DOI"},
+            {"pmid": "40000016", "doi": "   ", "title": "Blank DOI"},
+            {"pmid": "40000017", "title": "No DOI key"},
+        ],
+        europe_pmc_records=[
+            # The finding: a placeholder DOI is the record's only identifier.
+            {"doi": "N/A", "title": "DOI-only placeholder"},
+        ],
+    )
+    assert _r7_publication(record, pmid="40000011")["doi"] is None
+    assert _r7_publication(record, pmid="40000012")["doi"] is None
+    assert _r7_publication(record, pmid="40000013")["doi"] == "10.1000/abc.123"
+    assert _r7_publication(record, pmid="40000014")["doi"] == "10.1000/cit.7"
+    for pmid in ("40000015", "40000016", "40000017"):
+        assert _r7_publication(record, pmid=pmid)["doi"] is None, pmid
+    dois = [pub["doi"] for pub in record["linked_publications"]]
+    assert "n/a" not in dois and "none" not in dois, dois
+    titles = [pub["title"] for pub in record["linked_publications"]]
+    assert "DOI-only placeholder" not in titles, "a placeholder DOI alone linked a publication"
+    # N/A twice, "doi:" and "none": four explicit values dropped; absences are not counted.
+    assert record["dropped_malformed_doi_count"] == 4
+
+    # The sample study's own DOIs are valid, so nothing is dropped from it alone.
+    plain = _rt_f442_assemble(_sample_study(nct_id=RT_SCOPE_ID))
+    assert plain["dropped_malformed_doi_count"] == 0
+
+    # An old SICI-style DOI given in a DOI field is a DOI: ";", "<" and ">" are
+    # allowed in an explicit DOI's suffix, unlike in the free-text pattern.
+    sici = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"
+    sici_record = _rt_f442_assemble(
+        _sample_study(nct_id=RT_SCOPE_ID),
+        pubmed_records=[{"pmid": "40000031", "doi": sici, "title": "SICI DOI"}],
+    )
+    assert _r7_publication(sici_record, pmid="40000031")["doi"] == sici.lower()
+    assert sici_record["dropped_malformed_doi_count"] == 0
+
+    # Other values that are not DOIs: a short registrant code, no suffix, not a
+    # string, and a registrant code in non-ASCII digits.
+    for bad in ("10.123/abc", "10.1000/", "pending", 101000, True, "10.\u0661\u0660\u0660\u0660/abc"):
+        bad_record = _rt_f442_assemble(
+            _sample_study(nct_id=RT_SCOPE_ID),
+            pubmed_records=[{"pmid": "40000021", "doi": bad, "title": "Bad DOI"}],
+        )
+        assert _r7_publication(bad_record, pmid="40000021")["doi"] is None, bad
+        assert bad_record["dropped_malformed_doi_count"] == 1, bad
+
+    # The layout projection keeps its key set; the count is the record's own.
+    projection = to_outcomes_layout_provenance(
+        record, in_scope_nct_ids=RT_SCOPE_SET, audit_nct_ids=RT_AUDIT_SET
+    )
+    assert set(projection) == {
+        "nct_id",
+        "provenance_schema_version",
+        "provenance_rules_version",
+        "assembled_at",
+        "source_pipeline_commit",
+        "registry_milestones",
+        "posted_documents",
+        "excluded_standalone_icf_count",
+        "publications",
+        "date_deltas",
+    }
+    assert all(set(pub) == _R7_PUBLICATION_KEYS for pub in projection["publications"])

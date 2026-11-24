@@ -22,31 +22,55 @@ Subcommands:
   pre-launch budget guards (``max_launchable_shards``, ``launch_approved``),
   and emits deterministic ``/swarm`` shard manifests.
 
+Free text (planner 1.9.0, verifier 1.7.0): a string value of an input row that
+is not under an identifier key (``src.citation_verifier._is_identifier_key``:
+an NCT ID key, a URL key, ``filename``) is free text, such as a quotation, a
+note, a registry-copied ``primary_outcome_title`` or indexed document text. An
+audit ID in it, in any reading, is refused before anything is written, and a
+malformed NCT token in it is refused; any other trial it names is counted
+(``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL``: rows and distinct trials, in
+``verify``'s report and the plan's ``free_text_other_trials``, and on stderr),
+never printed, and does not stop the run. Every rule below that refuses an
+unlisted trial applies to keys and identifier values.
+
 Firewall basis: every ``enforce_audit_holdout`` call here passes
 ``in_scope_nct_ids`` (the index rows carrying explicit ``in_audit=False``) and
 no ``in_audit``, so membership of that set, read from the index, is what admits
 a trial; no call writes a literal ``in_audit=False`` on a trial's behalf. A
-``--doc-cache`` entry names no trial of its own, so it is admitted only when
-its sha256 is a document of an in-scope trial and none of its keys or strings
-names an audit, unlisted or malformed NCT ID; an entry that does name a trial
-must name one whose document has that sha256, and two different rows for one
-sha256 raise, as do two different ``--profiles`` rows for one trial (an
-identical repeat is kept once). An in-scope index row may not name an audit
-trial in any key or string (an alias included), and its classic ``NCTId``
-must be its ``nct_id``.
-``--documents``, ``--locations``
-and ``--profiles`` rows follow the same token rule under every key and string,
-with the row's own trial also admitted. ``verify --pages-dir`` hands the page
-provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
-content-addressed page map outside them is opened. ``plan`` files a trial as
-``cached_complete`` only when every one of its rows passes
-``verify_location_record`` with page text (``--pages-dir``), so its quotations
-were found on their pages. An index row's missing ``protocol``/``sap`` flag is
-unknown, not "no document"; a malformed ``cohorts`` field raises. Every input
-file is parsed refusing repeated JSON keys, and an index holding rows under
-more than one of ``data``/``rows``/``trials`` is refused. A document without a
-sha256 is fingerprinted as present but unidentified (``DOC_SHA256_ABSENT``).
-``--report-out`` and ``--out-plan`` may not name an input of the run.
+``--doc-cache`` entry names no trial of its own, so it is admitted only when its
+sha256 is a document of an in-scope trial and none of its keys or strings names
+an audit or malformed NCT ID (nor an unlisted one outside free text); a trial it
+declares under an ID key is a claimant of that document, refused when it is held
+out and otherwise admitted (a document posted by several trials, planner 1.9.0),
+and two different rows for one sha256 raise, as do two different ``--profiles``
+rows for one trial (an identical repeat is kept once). ``--doc-cache`` lines are
+read under one document-indexer rules version: ``--doc-cache-rules-version``
+when given (lines of other versions are left out and counted), else the one the
+file holds; a file holding lines of several versions without the option is
+refused, and the plan records the version (``doc_cache_rules_version``). An
+in-scope index row may not name an audit trial in any key or string (an alias
+included), and its classic ``NCTId`` must be its ``nct_id``. ``--documents``,
+``--locations`` and ``--profiles`` rows follow the same token rule under every
+key and string, with the row's own trial also admitted. ``--documents`` and
+``--locations`` rows and ``--profiles`` documents carry the F6 provenance
+stamps, except the documents of a ``--profiles`` row exactly as the document
+indexer (m1) writes it, which no model produced
+(``_is_m1_deterministic_profile_document``). ``verify --pages-dir`` hands the
+page provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
+content-addressed page map outside them is opened. A content-addressed map of
+such a document is served to every in-scope trial that posts it, whichever trial
+it is tagged with (one document posted by several trials, tagged with the first;
+verifier 1.7.0), unless the tag is held out, which refuses the run before any
+page text is read. ``plan`` files a trial as ``cached_complete`` only when every
+one of its current documents passes ``verify_document_record`` and every one of
+its rows passes ``verify_location_record`` with page text (``--pages-dir``), so
+its quotations were found on their pages. An index row's missing
+``protocol``/``sap`` flag is unknown, not "no document"; a malformed ``cohorts``
+field raises. Every input file is parsed refusing repeated JSON keys, and an
+index holding rows under more than one of ``data``/``rows``/``trials`` is
+refused. A document without a sha256 is fingerprinted as present but
+unidentified (``DOC_SHA256_ABSENT``). ``--report-out`` and ``--out-plan`` may
+not name an input of the run.
 
 Runtime dependencies:
 - Python 3.11+ standard library (``argparse``, ``datetime``, ``gzip``,
@@ -62,7 +86,9 @@ Exit codes:
 - ``1``: Verification errors found, a quotation compared with no page text
   (``verify`` without ``--pages-dir``: the report counts them in
   ``quotations_not_compared`` and is not ok), schema/outcome-count contract
-  failure, or projected batch spend exceeds budget cap.
+  failure, a ``--doc-cache`` holding lines of several indexer rules versions
+  without ``--doc-cache-rules-version``, or projected batch spend exceeds
+  budget cap.
 - ``2``: CLI usage error (e.g. missing ``--index``, ``--ocr-dir`` without
   ``--pages-dir``, an output path that is an input, an input or output path
   that cannot be read or written: missing, a directory, unreadable), strict
@@ -83,7 +109,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import AbstractSet, Any, Final, Literal, Mapping, Sequence
+from typing import AbstractSet, Any, Final, Literal, Mapping, NamedTuple, Sequence
 
 # Allow direct execution via `python scripts/verify_and_plan_census_batch.py`.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -98,12 +124,14 @@ from src.citation_verifier import (  # noqa: E402
     _prescan_nested_nct_fields,
     _scan_record_strings_for_nct_tokens,
     _scan_strings_for_audit_nct_tokens,
+    _shared_document_scope,
     _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
     CitationVerificationError,
     DirectoryPageTextProvider,
     ELEMENTS,
     InvalidNctIdError,
+    NOTE_FREE_TEXT_NAMES_OTHER_TRIAL,
     PageTextProvider,
     UNREADABLE_SUBTYPES,
     VERIFIER_RULES_VERSION,
@@ -112,6 +140,7 @@ from src.citation_verifier import (  # noqa: E402
     validate_status_citations,
     validate_strict_nct_id,
     verify_census_corpus,
+    verify_document_record,
     verify_location_record,
 )
 from src.utils import pipeline_commit  # noqa: E402
@@ -130,7 +159,21 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # 1.7.0: a profile's readability_summary is read against all of UNREADABLE_SUBTYPES, so one
 # naming redacted_cci_ppd files a trial under unreadable_terminal_redacted (was
 # unstarted_primary, scheduled); two different --profiles rows for one trial raise.
-PLANNER_RULES_VERSION: Final[str] = "1.7.0"
+# 1.8.0: cached_complete also needs every current document (--documents rows, or the
+# profile's documents that replace them) to pass verify_document_record; a document verify
+# refuses (http_status 200 with no page count, say) makes the rows verdict rejected.
+# 1.9.0: the documents of a --profiles row exactly as the document indexer (m1) writes it
+# need no F6 stamps (model_id, profile_version): no model produced them, and the row carries
+# the deterministic run's stamps (_is_m1_deterministic_profile_document); a document
+# carrying model_id, every --documents row and every location row keep F6. --doc-cache lines
+# are read under one indexer rules version (--doc-cache-rules-version, else the file's only
+# one; several without the option are refused), recorded as doc_cache_rules_version. Free
+# text (a quotation, a note, a registry-copied title, indexed document text) naming a trial
+# that is not held out is counted (free_text_other_trials), not refused; structural IDs, keys,
+# URLs and filenames keep the strict rule, and an audit ID anywhere is still refused. A
+# document posted by several in-scope trials (one sha256) is planned for each: a doc-cache
+# entry or page map for it may be tagged with any claimant that is not held out.
+PLANNER_RULES_VERSION: Final[str] = "1.9.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
 CostSchedule = Literal["sliced", "full", "conservative"]
@@ -163,6 +206,63 @@ _SCAN_NOTE_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:image[- ]only|scan(?:ned)?|no\s+extractable\s+text|0\s+text\s+pages?|"
     r"raster(?:ized)?|photocop(?:y|ied))\b",
     re.IGNORECASE,
+)
+
+# The deterministic --profiles rows of the document indexer (Module 1,
+# src/document_indexer.py, which this module may not import). F6 provenance stamps
+# (``model_id``, ``profile_version``) record which AI model produced a row; m1's profiles
+# are produced by no model, so their documents carry neither stamp, and the profile row
+# carries the deterministic run's own stamps instead. These are the exact shapes m1 writes:
+# ``build_trial_document_profile`` returns a row of exactly ``_M1_PROFILE_KEYS`` whose
+# ``indexer_rules_version`` is m1's ``INDEXER_RULES_VERSION`` (``doc_indexer@<date>.v<n>``,
+# matched whole by ``_M1_INDEXER_RULES_VERSION_RE``, never as a substring), and
+# ``build_trial_document_record`` returns documents of exactly ``_M1_PROFILE_DOCUMENT_KEYS``.
+# ``write_profiles_jsonl`` writes the row unchanged. A row or document with any other key
+# set (one carrying ``model_id`` claims to be a model's output) is not m1's and is held to
+# F6 in full (``_is_m1_deterministic_profile_document``).
+_M1_INDEXER_RULES_VERSION_RE: Final[re.Pattern[str]] = re.compile(
+    r"doc_indexer@[0-9]{4}-[0-9]{2}-[0-9]{2}\.v[0-9]+", re.ASCII
+)
+_M1_PROFILE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "nct_id",
+        "indexer_rules_version",
+        "extracted_at",
+        "pipeline_commit",
+        "readability_summary",
+        "redaction_flags",
+        "excluded_icf_count",
+        "document_badge",
+        "documents",
+    }
+)
+_M1_PROFILE_DOCUMENT_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "nct_id",
+        "filename",
+        "doc_type",
+        "url",
+        "http_status",
+        "download_error",
+        "extraction_error",
+        "sha256",
+        "bytes",
+        "physical_pages",
+        "pages_without_text",
+        "readability_status",
+        "unreadable_recovery_bucket",
+        "redaction_markers",
+        "version_label",
+        "version_date_as_printed",
+        "api_doc_date",
+        "upload_date",
+        "upload_timing",
+        "pages_selected",
+        "pages_deferred",
+        "unreadable_statistical_pages",
+        "retrieved_at",
+        "cache_hit",
+    }
 )
 
 
@@ -491,18 +591,22 @@ def _scan_strings_for_nct_tokens(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> None:
-    """Refuse an audit, unlisted or malformed NCT token in any key or string value.
+    """Refuse an audit or malformed NCT token in any key or string value; report free text.
 
     The named-key checks in ``_validate_nested_firewall_metadata`` see only
     ``nct_id``-style keys and URL keys; a doc-cache entry can name a trial under
     any key (``{"trial": ...}``) or inside free text. Every string, keys
     included, is therefore read with the verifier's single text-token rule
     (``src.citation_verifier._check_embedded_text_ncts``): an NCT-like token must
-    be strict, outside the audit set and, since a doc-cache entry has no trial
-    of its own (``expected_nct_id=None``), in scope. This can refuse an in-scope
-    document whose indexed text names another trial; that refusal is loud
-    (exit 2) and deliberate, since a silent pass is the failure mode.
+    be strict and outside the audit set. A doc-cache entry has no trial of its
+    own (``expected_nct_id=None``), so in a key or an identifier value (an ID
+    key, a URL, a filename) any other trial must be in scope. Indexed document
+    text (a version label, a detected section heading) is free text (planner
+    1.9.0): with ``free_text_mentions`` given, a trial it names that is not
+    held out is added there for the plan's ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL``
+    count, not refused; an audit ID there is refused as before.
     """
     _scan_record_strings_for_nct_tokens(
         node,
@@ -511,6 +615,7 @@ def _scan_strings_for_nct_tokens(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
 
 
@@ -521,6 +626,8 @@ def _validate_doc_cache_entry(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
+    shared_document: bool = False,
 ) -> tuple[str, frozenset[str]]:
     """Firewall one doc-cache entry and return its sha256 and the trials it declares.
 
@@ -530,25 +637,42 @@ def _validate_doc_cache_entry(
     only thing that can tie it to a document (``plan_incremental_cohort`` then
     requires that sha to be a document of an in-scope trial); (2) pass the
     named-key checks (``nct_id``-style keys, the holdout flag, URL keys); and
-    (3) hold no audit, unlisted or malformed NCT token in any other key or
-    string. The trials it names under ID keys (``nct_id``, ``nct_ids``, at any
-    depth) are returned: when it names any, ``plan_incremental_cohort``
-    requires them to be trials whose documents have that sha256.
+    (3) hold no audit or malformed NCT token in any other key or string, and
+    no unlisted one in a key or identifier value; a trial its indexed text
+    names (free text, planner 1.9.0) goes to ``free_text_mentions`` when given.
+    The trials it names under ID keys (``nct_id``, ``nct_ids``, at any depth)
+    are returned.
+
+    ``shared_document`` (planner 1.9.0, D4): the caller passes True when the
+    entry's sha256 is a document an in-scope trial of this run posts. The entry
+    describes that content, which several trials can post, so each trial it
+    declares is a claimant of the document (``_shared_document_scope``): one
+    in the audit set is refused, as before; any other (another in-scope trial,
+    or one absent from this run's index, such as another shard's) is admitted.
+    Without it a declared trial must be in scope, as before.
     """
+    entry_scope = _shared_document_scope(
+        row,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        shared_document=shared_document,
+        context=context,
+    )
     declared = _validate_nested_firewall_metadata(
         row,
         context=context,
         expected_nct_id=None,
         audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        in_scope_nct_ids=entry_scope,
         allow_empty_audit_set=allow_empty_audit_set,
     )
     _scan_strings_for_nct_tokens(
         row,
         context=context,
         audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        in_scope_nct_ids=entry_scope if entry_scope is not None else in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
     sha = row.get("sha256")
     if type(sha) is not str or _SHA256_HEX_RE.fullmatch(sha) is None:
@@ -559,38 +683,159 @@ def _validate_doc_cache_entry(
     return sha, frozenset(declared)
 
 
-def _load_doc_cache_by_sha256(
+# The doc-cache key naming the document-indexer rules a line was computed under. m1 keeps
+# one line per (sha256, indexer rules version) in document_index_by_sha256.jsonl, so after a
+# rules bump the file holds two lines for one sha256 (planner 1.9.0, D2).
+DOC_CACHE_RULES_VERSION_KEY: Final[str] = "indexer_rules_version"
+
+
+class DocCacheInput(NamedTuple):
+    """The ``--doc-cache`` lines a plan reads, and which indexer rules they were computed under.
+
+    ``by_sha256`` holds the lines kept, keyed by sha256; ``rules_version`` is
+    the indexer rules version they share (the one asked for, else the one the
+    file holds; ``None`` when there is no file or its lines name none);
+    ``lines_read`` counts the file's lines and ``lines_ignored`` those left
+    out as of another rules version.
+    """
+
+    by_sha256: dict[str, dict[str, Any]]
+    rules_version: str | None
+    lines_read: int
+    lines_ignored: int
+
+
+def _doc_cache_line_rules_version(row: Mapping[str, Any], *, context: str) -> str | None:
+    """Return the indexer rules version a doc-cache line names, ``None`` when it names none.
+
+    Method: m1 writes ``indexer_rules_version`` on every line as a non-empty
+    string. A line without the key names no version (``None``, a version of its
+    own for the count in ``_select_doc_cache_rules_version``); a value that is
+    not a non-empty string does not say which rules computed the line, so it is
+    refused rather than read as some version. The message gives the value's
+    type only.
+    """
+    if DOC_CACHE_RULES_VERSION_KEY not in row:
+        return None
+    value = row[DOC_CACHE_RULES_VERSION_KEY]
+    if not _is_non_empty_str(value):
+        raise CitationVerificationError(
+            f"{context} has {DOC_CACHE_RULES_VERSION_KEY} of type {type(value).__name__} that is "
+            f"not a non-empty string; which indexer rules computed the line is not determined."
+        )
+    return value
+
+
+def _describe_rules_versions(versions: AbstractSet[str | None]) -> str:
+    """Name indexer rules versions for a message: m1-shaped ones as written, the rest counted.
+
+    A version that matches ``_M1_INDEXER_RULES_VERSION_RE`` whole holds no NCT
+    token and is quoted; any other value (or a line naming none) is only
+    counted, since a version string read from a file could hold anything.
+    """
+    shown = sorted(
+        v for v in versions if v is not None and _M1_INDEXER_RULES_VERSION_RE.fullmatch(v)
+    )
+    others = len(versions) - len(shown)
+    parts = [repr(v) for v in shown]
+    if others:
+        parts.append(f"{others} other value(s) or unversioned lines, not shown")
+    return ", ".join(parts)
+
+
+def _select_doc_cache_rules_version(
+    versions: Sequence[str | None],
+    *,
+    rules_version: str | None,
+    source: str,
+) -> tuple[str | None, list[bool]]:
+    """Choose which doc-cache lines (or entries) a plan reads, by indexer rules version.
+
+    Method (planner 1.9.0, D2): with ``rules_version`` given (CLI
+    ``--doc-cache-rules-version``), a line is kept exactly when its version
+    equals it; every other line, unversioned lines included, is left out and
+    counted. Without it, the lines must all name one version (or all name
+    none): lines of two or more versions do not say which rules the plan is to
+    be made against, and picking one (the last read, the newest) would be a
+    silent choice, so the call is refused, naming how many versions there are
+    and the option that chooses. Returns the version the plan reads under and,
+    per line, whether it is kept.
+    """
+    if rules_version is not None:
+        return rules_version, [version == rules_version for version in versions]
+    distinct = set(versions)
+    if len(distinct) > 1:
+        raise CitationVerificationError(
+            f"{source} holds lines of {len(distinct)} indexer rules versions "
+            f"({_describe_rules_versions(distinct)}); the plan does not choose one. Pass "
+            f"--doc-cache-rules-version (library: doc_cache_rules_version) naming the rules "
+            f"version to plan against; lines of other versions are then left out."
+        )
+    return (next(iter(distinct)) if distinct else None), [True] * len(versions)
+
+
+def _load_doc_cache(
     path: Path | None,
     *,
+    rules_version: str | None = None,
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
-) -> dict[str, dict[str, Any]]:
-    """Load ``--doc-cache`` rows keyed by sha256, firewalling each row as it is keyed.
+    posted_document_shas: AbstractSet[str] = frozenset(),
+) -> DocCacheInput:
+    """Load ``--doc-cache`` lines of one indexer rules version keyed by sha256, firewalling each.
 
-    A row without a valid sha256 is refused rather than skipped
-    (``_validate_doc_cache_entry``). Two rows for one sha256 must be identical:
-    rows that differ (one says ``image_only_scan``, the other
+    Every line is firewalled first (``_validate_doc_cache_entry``), the lines
+    a version selection then leaves out included, so the holdout rules are the
+    same whatever version is read. A line without a valid sha256 is refused
+    rather than skipped. The lines read are those of one indexer rules version
+    (``_select_doc_cache_rules_version``): ``rules_version`` when given, else
+    the one version the file holds, and a file holding several without
+    ``rules_version`` is refused. Among the lines read, two for one sha256 must
+    be identical: lines that differ (one says ``image_only_scan``, the other
     ``redacted_cci_ppd``) leave no way to tell which describes the document,
     and keeping the last one read would let line order decide whether a trial
     is recovered by OCR or skipped at $0, so they raise. An identical repeat is
-    kept once.
+    kept once. A sha256 with no line of the version read is a document the
+    cache says nothing about, as when it has no line at all.
+    ``posted_document_shas`` are the sha256 values of this run's
+    ``--documents`` rows and profile documents: a line for one of them may
+    declare any trial that is not held out (a shared document, D4,
+    ``_validate_doc_cache_entry``); ``plan_incremental_cohort`` then checks
+    each line read against the firewalled documents.
     """
     if path is None:
-        return {}
+        return DocCacheInput({}, rules_version, 0, 0)
     rows = load_jsonl(path)
     for idx, row in enumerate(rows):
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
-    by_sha: dict[str, dict[str, Any]] = {}
-    first_line_by_sha: dict[str, int] = {}
+    shas: list[str] = []
     for idx, row in enumerate(rows):
+        # Indexed text naming another trial is not refused here; plan_incremental_cohort
+        # reads the lines kept again and counts what their text names.
         sha, _ = _validate_doc_cache_entry(
             row,
             context=f"{path}[{idx}]",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
+            shared_document=type(row.get("sha256")) is str
+            and row["sha256"] in posted_document_shas,
         )
+        shas.append(sha)
+    versions = [
+        _doc_cache_line_rules_version(row, context=f"{path}[{idx}]")
+        for idx, row in enumerate(rows)
+    ]
+    chosen_version, kept = _select_doc_cache_rules_version(
+        versions, rules_version=rules_version, source=f"--doc-cache {path}"
+    )
+    by_sha: dict[str, dict[str, Any]] = {}
+    first_line_by_sha: dict[str, int] = {}
+    for idx, (sha, row) in enumerate(zip(shas, rows)):
+        if not kept[idx]:
+            continue
         if sha in by_sha:
             if by_sha[sha] != row:
                 raise CitationVerificationError(
@@ -600,7 +845,72 @@ def _load_doc_cache_by_sha256(
             continue
         by_sha[sha] = row
         first_line_by_sha[sha] = idx
-    return by_sha
+    return DocCacheInput(by_sha, chosen_version, len(rows), kept.count(False))
+
+
+def _load_doc_cache_by_sha256(
+    path: Path | None,
+    *,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str],
+    allow_empty_audit_set: bool,
+    rules_version: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load ``--doc-cache`` rows keyed by sha256 (``_load_doc_cache``, the lines read only)."""
+    return _load_doc_cache(
+        path,
+        rules_version=rules_version,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+    ).by_sha256
+
+
+def _is_m1_deterministic_profile(row: Mapping[str, Any]) -> bool:
+    """True when ``row`` is a ``--profiles`` row exactly as the document indexer (m1) writes it.
+
+    Method: m1's ``build_trial_document_profile`` returns exactly
+    ``_M1_PROFILE_KEYS``, and the run's provenance is on the row itself: its
+    ``indexer_rules_version`` (m1's ``INDEXER_RULES_VERSION``, which must match
+    ``_M1_INDEXER_RULES_VERSION_RE`` whole), ``extracted_at`` (a non-empty
+    string) and ``pipeline_commit`` (a non-empty string, or null when m1 ran
+    outside a checkout, as m1 records it). A row with any key m1 does not
+    write, or without those stamps, is not m1's deterministic output. Nothing
+    here is a substring test: the key set is compared whole and the rules
+    version is matched whole.
+    """
+    if set(row.keys()) != _M1_PROFILE_KEYS:
+        return False
+    rules_version = row.get("indexer_rules_version")
+    if type(rules_version) is not str or _M1_INDEXER_RULES_VERSION_RE.fullmatch(rules_version) is None:
+        return False
+    if not _is_non_empty_str(row.get("extracted_at")):
+        return False
+    commit = row.get("pipeline_commit")
+    return commit is None or _is_non_empty_str(commit)
+
+
+def _is_m1_deterministic_profile_document(
+    profile: Mapping[str, Any], doc: Any
+) -> bool:
+    """True when ``doc``, a document of ``profile``, is exempt from the F6 provenance stamps.
+
+    Method (planner 1.9.0): F6 (``model_id``, ``profile_version``) records which
+    AI model produced a row. A document of an m1 profile
+    (``_is_m1_deterministic_profile``) whose key set is exactly
+    ``_M1_PROFILE_DOCUMENT_KEYS`` (m1's ``build_trial_document_record``) was
+    produced by no model, and the profile row carries its deterministic
+    provenance, so it carries neither stamp. A document with any other key set
+    is not m1's: one carrying ``model_id`` claims to be a model's output and is
+    held to F6 in full, ``profile_version`` included. The exemption applies to
+    ``plan``'s ``--profiles`` documents only: ``--documents`` rows, location
+    rows, and every row ``verify`` reads keep F6.
+    """
+    return (
+        isinstance(doc, Mapping)
+        and set(doc.keys()) == _M1_PROFILE_DOCUMENT_KEYS
+        and _is_m1_deterministic_profile(profile)
+    )
 
 
 def _validate_profile_entry(
@@ -611,6 +921,7 @@ def _validate_profile_entry(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    free_text_mentions: set[str] | None = None,
 ) -> str:
     """Firewall one per-trial profile and return its trial.
 
@@ -618,7 +929,13 @@ def _validate_profile_entry(
     walk and the record token rule with that trial as its own; ``documents``,
     when given, must be a list of objects, each carrying the provenance stamps
     of a ``--documents`` row (``model_id``, ``profile_version``), since the
-    plan partitions and fingerprints the trial on them.
+    plan partitions and fingerprints the trial on them, unless it is a
+    document of a deterministic m1 profile
+    (``_is_m1_deterministic_profile_document``), which no model produced. The
+    firewall above runs on every profile, m1's included. Free text of the
+    profile (a document's version label) naming another trial goes to
+    ``free_text_mentions`` when given, rather than being refused; an audit ID
+    there is refused (planner 1.9.0).
     """
     checked_key = validate_strict_nct_id(key_nct, context=f"{context}.nct_id")
     _prescan_nested_nct_fields(row, context=context)
@@ -637,7 +954,8 @@ def _validate_profile_entry(
         allow_empty_audit_set=allow_empty_audit_set,
     )
     # A profile is a record about one trial, read like a document row: any key or
-    # string naming another trial follows the derived-ID rule.
+    # identifier value naming another trial follows the derived-ID rule; its free text
+    # follows the free-text rule (an audit ID refuses, another trial is counted).
     _scan_record_strings_for_nct_tokens(
         row,
         context=context,
@@ -645,6 +963,7 @@ def _validate_profile_entry(
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
+        free_text_mentions=free_text_mentions,
     )
     nested_docs = row.get("documents")
     if nested_docs is not None and not isinstance(nested_docs, list):
@@ -659,7 +978,10 @@ def _validate_profile_entry(
                 )
             # A profile's documents replace the trial's --documents rows in the plan (the
             # trial is partitioned and fingerprinted on them), so they carry the same F6
-            # provenance stamps a --documents row must carry.
+            # provenance stamps a --documents row must carry, unless they are m1's
+            # deterministic documents, which no model produced (planner 1.9.0).
+            if _is_m1_deterministic_profile_document(row, doc):
+                continue
             _validate_document_provenance_for_plan(
                 doc, context=f"{context}.documents[{doc_idx}]"
             )
@@ -705,6 +1027,8 @@ def _load_profiles_by_nct(
     for idx, row in enumerate(rows):
         validate_strict_nct_id(row.get("nct_id"), context=f"{path}[{idx}].nct_id")
         _prescan_nested_nct_fields(row, context=f"{path}[{idx}]")
+    # Free text naming another trial is counted by plan_incremental_cohort, which reads
+    # each profile again; here it is not refused.
     checked_ncts: list[str] = [
         _validate_profile_entry(
             row.get("nct_id"),
@@ -713,6 +1037,7 @@ def _load_profiles_by_nct(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
         for idx, row in enumerate(rows)
     ]
@@ -1005,6 +1330,7 @@ def _trial_rows_verify(
     allow_empty_audit_set: bool,
     page_text_provider: PageTextProvider | None,
     text_source: str,
+    provenance_exempt_filenames: AbstractSet[str] = frozenset(),
 ) -> RowsVerdict:
     """Return whether every location row of one trial is a row ``verify`` would accept.
 
@@ -1018,8 +1344,36 @@ def _trial_rows_verify(
     trial's current documents and the page provider the plan was given, with
     exhaustive NOT_FOUND required (verify's default).
 
-    Returns ``"rejected"`` for any error-severity issue, two rows for one
-    (outcome, element, pass) cell, or two current documents with one filename;
+    The rows are judged against the documents, so the documents are judged
+    first: each of ``current_docs`` is run through
+    ``src.citation_verifier.verify_document_record`` with the audit and
+    in-scope arguments the rows use. ``current_docs`` is whatever the plan
+    files the trial on: its profile's ``documents`` when the profile has a
+    list, else its ``--documents`` rows. ``verify_location_record``
+    range-checks a cited page only against a document whose
+    ``physical_pages`` is an int, so without this a document recorded with
+    ``http_status`` 200 and no page count, which ``verify`` refuses, let a
+    citation to any page through. Document keys are held to
+    ``verify --allow-extra-document-keys`` (``strict_keys=False``: the
+    required keys plus ``DOCUMENT_OPTIONAL_KEYS``, nothing else), not to
+    verify's stricter default: the plan has no such flag, and it reads the
+    optional readability keys (``readability_status``,
+    ``unreadable_subtype``, ``unreadable_recovery_bucket``) from documents
+    itself (``classify_unreadable_subtype``), so a document carrying them is
+    a document the plan is meant to take, and refusing it would re-run its
+    trial on every plan. No ``pdf_root`` is given: the plan reads no PDF.
+    ``verify_document_record`` raises ``InvalidNctIdError`` for a document
+    with no strict ``nct_id``, as ``verify`` does; a ``--documents`` row
+    always has one by now, and a profile document without one stops the
+    plan here rather than being judged on its rows. A document named in
+    ``provenance_exempt_filenames`` (the deterministic m1 profile documents
+    ``_is_m1_deterministic_profile_document`` admits, planner 1.9.0) is
+    judged with ``require_provenance_stamps=False``: the F6 stamps are not
+    required of it, and every other rule applies as to any document.
+
+    Returns ``"rejected"`` for any error-severity issue of a document or a
+    row, two rows for one (outcome, element, pass) cell, or two current
+    documents with one filename;
     ``"quotations_unchecked"`` when no row is rejected but some citation's
     quotation was compared with no page text (no provider: the rows' structure
     verifies, and whether their quotations appear on their pages is unknown);
@@ -1032,6 +1386,17 @@ def _trial_rows_verify(
         if type(fn) is not str or fn in docs_by_filename:
             return "rejected"
         docs_by_filename[fn] = doc
+    for doc in current_docs:
+        doc_issues = verify_document_record(
+            doc,
+            audit_nct_ids=audit_nct_ids,
+            in_scope_nct_ids=in_scope_nct_ids,
+            allow_empty_audit_set=allow_empty_audit_set,
+            strict_keys=False,
+            require_provenance_stamps=doc.get("filename") not in provenance_exempt_filenames,
+        )
+        if any(issue.severity == "error" for issue in doc_issues):
+            return "rejected"
     seen_cells: set[tuple[str, str, str]] = set()
     quotations_unchecked = False
     for loc in nct_locs:
@@ -1081,16 +1446,21 @@ def plan_incremental_cohort(
     planned_at: str | None = None,
     page_text_provider: PageTextProvider | None = None,
     text_source: str = "pdfkit",
+    doc_cache_rules_version: str | None = None,
+    doc_cache_lines_ignored: int = 0,
 ) -> dict[str, Any]:
     """Partition cohort trials and emit budget-gated ``/swarm`` shard manifests.
 
     Enforces strict ASCII NCT IDs, ``in_audit == False``, in-scope membership,
     ``expected_k >= 1``, and provenance stamps across all input streams
-    (``documents`` rows and a profile's ``documents``). ``mode`` and
+    (``documents`` rows and a profile's ``documents``; a deterministic m1
+    profile's documents, which no model produced, carry none:
+    ``_is_m1_deterministic_profile_document``). ``mode`` and
     ``cost_schedule`` must be one of ``PLAN_MODES`` / ``COST_SCHEDULES``
     exactly; anything else is refused, never read as the default.
 
-    ``cached_complete`` (never re-run) needs rows that verify accepts with
+    ``cached_complete`` (never re-run) needs current documents that
+    ``verify_document_record`` accepts and rows that verify accepts with
     their quotations found on their pages, so it needs page text
     (``page_text_provider``; CLI ``--pages-dir``). Without it, a trial whose
     rows are otherwise complete and valid is filed under
@@ -1106,6 +1476,16 @@ def plan_incremental_cohort(
     one it is ``unreadable_subtype_unknown``: counted, listed under no
     subtype, and neither terminal nor scheduled in any mode. A trial with no
     primary rows is UNREADABLE when its profile's summary names a subtype.
+
+    ``doc_cache_by_sha256`` entries are read under one document-indexer rules
+    version (planner 1.9.0, ``_select_doc_cache_rules_version``):
+    ``doc_cache_rules_version`` when given (entries of any other version, or
+    naming none, are left out, as a missing entry), else the one version the
+    entries name; entries of two or more versions without it are refused. The
+    plan records the version as ``doc_cache_rules_version`` and, in
+    ``doc_cache_lines_ignored_other_rules_versions``, the entries it left out
+    plus ``doc_cache_lines_ignored``, the lines a caller (the CLI's
+    ``_load_doc_cache``) left out before keying the file by sha256.
     """
     if type(text_source) is not str or not _is_non_empty_str(text_source):
         raise CitationVerificationError(
@@ -1121,6 +1501,15 @@ def plan_incremental_cohort(
         )
     if type(shard_size) is not int or shard_size < 1:
         raise CitationVerificationError(f"shard_size must be int >= 1, got {shard_size!r}")
+    if doc_cache_rules_version is not None and not _is_non_empty_str(doc_cache_rules_version):
+        raise CitationVerificationError(
+            f"doc_cache_rules_version must be a non-empty string or None, got "
+            f"{type(doc_cache_rules_version).__name__}."
+        )
+    if type(doc_cache_lines_ignored) is not int or doc_cache_lines_ignored < 0:
+        raise CitationVerificationError(
+            f"doc_cache_lines_ignored must be int >= 0, got {doc_cache_lines_ignored!r}"
+        )
     for cost_label, cost_val in (
         ("budget_cap_usd", budget_cap_usd),
         ("cost_per_trial_sliced_usd", cost_per_trial_sliced_usd),
@@ -1216,6 +1605,18 @@ def plan_incremental_cohort(
                 f"Requested --nct-id {nct_id!r} does not belong to cohort {cohort!r}."
             )
 
+    # Free text of an input row naming a trial other than its own (planner 1.9.0): not
+    # refused unless the trial is held out; the plan counts the rows and the distinct
+    # trials (``free_text_other_trials``), never recording an ID.
+    free_text_rows = 0
+    free_text_ids: set[str] = set()
+
+    def _count_free_text(mentions: set[str]) -> None:
+        nonlocal free_text_rows
+        if mentions:
+            free_text_rows += 1
+            free_text_ids.update(mentions)
+
     for doc_idx, doc in enumerate(documents):
         doc_nct = doc["nct_id"]
         enforce_audit_holdout(
@@ -1232,6 +1633,7 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        doc_mentions: set[str] = set()
         _scan_record_strings_for_nct_tokens(
             doc,
             context=f"documents[{doc_idx}]",
@@ -1239,7 +1641,9 @@ def plan_incremental_cohort(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=doc_mentions,
         )
+        _count_free_text(doc_mentions)
         _validate_document_provenance_for_plan(doc, context=f"documents[{doc_idx}]")
 
     for loc_idx, loc in enumerate(locations):
@@ -1258,6 +1662,7 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        loc_mentions: set[str] = set()
         _scan_record_strings_for_nct_tokens(
             loc,
             context=f"locations[{loc_idx}]",
@@ -1265,7 +1670,9 @@ def plan_incremental_cohort(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=loc_mentions,
         )
+        _count_free_text(loc_mentions)
         _validate_location_provenance_for_plan(loc, context=f"locations[{loc_idx}]")
 
     # A doc-cache entry is tied to a trial only through its sha256: it must be the sha256 of
@@ -1284,6 +1691,7 @@ def plan_incremental_cohort(
                 if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str:
                     trials_by_doc_sha.setdefault(pdoc["sha256"], set()).add(prof_key)
     in_scope_doc_shas: set[str] = set(trials_by_doc_sha)
+    cache_mentions: dict[str, set[str]] = {}
     for sha_key, cache_row in doc_cache_by_sha256.items():
         if not isinstance(cache_row, Mapping):
             raise CitationVerificationError(
@@ -1296,13 +1704,20 @@ def plan_incremental_cohort(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
-        entry_sha, entry_trials = _validate_doc_cache_entry(
+        entry_mentions: set[str] = set()
+        # An entry for a document an in-scope trial posts may declare any claimant of that
+        # document that is not held out (D4); an audit claimant is refused.
+        entry_sha, _ = _validate_doc_cache_entry(
             cache_row,
             context=f"doc_cache_by_sha256[{sha_key!r}]",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=entry_mentions,
+            shared_document=type(cache_row.get("sha256")) is str
+            and cache_row["sha256"] in in_scope_doc_shas,
         )
+        cache_mentions[sha_key] = entry_mentions
         if sha_key != entry_sha:
             raise AuditHoldoutViolationError(
                 f"doc_cache_by_sha256 key {sha_key!r} disagrees with its entry's "
@@ -1314,17 +1729,36 @@ def plan_incremental_cohort(
                 f"document of an in-scope trial in documents or profiles, so it cannot be tied "
                 f"to an in-scope trial."
             )
-        # An entry that names a trial must name one whose document has its sha256: an entry
-        # declaring trial B applied to trial A's document would move A between partitions
-        # (OCR recovery or the terminal $0 skip) on another trial's description, as a page
-        # map declaring another trial is refused.
-        foreign_trials = entry_trials - trials_by_doc_sha[entry_sha]
-        if foreign_trials:
-            raise AuditHoldoutViolationError(
-                f"doc_cache_by_sha256 entry sha256={entry_sha!r} declares "
-                f"{len(foreign_trials)} trial(s) whose documents do not have that sha256; it "
-                f"describes another trial's document."
-            )
+        # The entry describes the content with its sha256, which an in-scope trial posts
+        # (checked above). A trial it declares is a claimant of that content: one in the
+        # audit set was refused by the walk; any other is the tag of a document posted by
+        # several trials (the document indexer tags with the first trial it indexed the
+        # bytes for), and the entry describes the requesting trial's document as much as
+        # its own (planner 1.9.0, D4; it was refused when no document of this run's that
+        # trial had the sha256).
+
+    # Every entry is firewalled above; the plan then reads the entries of one indexer
+    # rules version only (planner 1.9.0, D2). An entry left out is a document the cache
+    # says nothing about, as when the cache has no entry for its sha256.
+    cache_keys = list(doc_cache_by_sha256.keys())
+    cache_versions = [
+        _doc_cache_line_rules_version(
+            doc_cache_by_sha256[sha_key], context=f"doc_cache_by_sha256[{sha_key!r}]"
+        )
+        for sha_key in cache_keys
+    ]
+    planned_doc_cache_rules_version, cache_kept = _select_doc_cache_rules_version(
+        cache_versions, rules_version=doc_cache_rules_version, source="doc_cache_by_sha256"
+    )
+    effective_doc_cache: dict[str, Mapping[str, Any]] = {
+        sha_key: doc_cache_by_sha256[sha_key]
+        for sha_key, keep in zip(cache_keys, cache_kept)
+        if keep
+    }
+    doc_cache_ignored_total = doc_cache_lines_ignored + cache_kept.count(False)
+    # Only the entries the plan reads are counted for what their indexed text names.
+    for sha_key in effective_doc_cache:
+        _count_free_text(cache_mentions[sha_key])
 
     for prof_key in sorted(profiles_by_nct.keys(), key=str):
         prof_row = profiles_by_nct[prof_key]
@@ -1332,6 +1766,7 @@ def plan_incremental_cohort(
             raise CitationVerificationError(
                 f"profiles_by_nct[{prof_key!r}] must be a mapping."
             )
+        profile_mentions: set[str] = set()
         _validate_profile_entry(
             prof_key,
             prof_row,
@@ -1339,7 +1774,9 @@ def plan_incremental_cohort(
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=profile_mentions,
         )
+        _count_free_text(profile_mentions)
 
     existing_docs_by_nct: dict[str, list[Mapping[str, Any]]] = {}
     for doc in documents:
@@ -1403,8 +1840,17 @@ def plan_incremental_cohort(
         expected_k = _require_expected_primary_outcomes(row, context="plan index row")
 
         profile = profiles_by_nct.get(nct_id)
+        # The documents of a deterministic m1 profile carry no F6 stamps (planner 1.9.0,
+        # ``_is_m1_deterministic_profile_document``); the rows verdict judges them without.
+        provenance_exempt_filenames: frozenset[str] = frozenset()
         if profile is not None and isinstance(profile.get("documents"), list):
             current_docs: list[Mapping[str, Any]] = list(profile["documents"])
+            provenance_exempt_filenames = frozenset(
+                doc["filename"]
+                for doc in current_docs
+                if _is_m1_deterministic_profile_document(profile, doc)
+                and type(doc.get("filename")) is str
+            )
         else:
             current_docs = list(existing_docs_by_nct.get(nct_id, ()))
 
@@ -1449,7 +1895,7 @@ def plan_incremental_cohort(
             subtype: str | None = classify_unreadable_subtype(
                 current_docs,
                 unresolved_unreadable_rows or primary_locs,
-                doc_cache_by_sha256,
+                effective_doc_cache,
             )
             if subtype is None:
                 # The profile's own readability summary names the subtype when the rows and
@@ -1518,6 +1964,7 @@ def plan_incremental_cohort(
                 allow_empty_audit_set=allow_empty_audit_set,
                 page_text_provider=page_text_provider,
                 text_source=text_source,
+                provenance_exempt_filenames=provenance_exempt_filenames,
             )
         if rows_verdict == "rejected":
             # A cache entry exists, but some row of the trial would fail verify (a quotation
@@ -1665,6 +2112,15 @@ def plan_incremental_cohort(
         "mode": mode,
         "pass_role": effective_pass_role,
         "shard_size": shard_size,
+        "doc_cache_rules_version": planned_doc_cache_rules_version,
+        "doc_cache_lines_ignored_other_rules_versions": doc_cache_ignored_total,
+        "free_text_other_trials": {
+            "code": NOTE_FREE_TEXT_NAMES_OTHER_TRIAL,
+            "rows": free_text_rows,
+            "distinct_ids": len(free_text_ids),
+            "distinct_ids_in_scope": len(free_text_ids & in_scope_nct_ids),
+            "distinct_ids_not_in_scope": len(free_text_ids - in_scope_nct_ids),
+        },
         "excluded_in_audit_count": excluded_in_audit_count,
         "excluded_no_document_count": excluded_no_document_count,
         "partition_counts": {k: len(v) for k, v in partitions.items()},
@@ -1740,6 +2196,25 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
     tmp_path.replace(path)
+
+
+def _warn_free_text_other_trials(summary: Mapping[str, Any]) -> None:
+    """Print the ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` summary on stderr: counts only, no ID.
+
+    A warning, like ``NOTE_PAGE_COUNT_MISMATCH``: it does not change the exit
+    code. Only an audit-holdout ID in free text stops a run, before anything is
+    written.
+    """
+    if not summary.get("rows"):
+        return
+    print(
+        f"WARNING [{summary['code']}]: free text of {summary['rows']} row(s) names "
+        f"{summary['distinct_ids']} trial(s) other than the row's own "
+        f"({summary['distinct_ids_in_scope']} in the in-scope index rows, "
+        f"{summary['distinct_ids_not_in_scope']} not in them); not refused, since only an "
+        f"audit-holdout ID in free text is. IDs are not printed.",
+        file=sys.stderr,
+    )
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
@@ -1820,6 +2295,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
         )
+        # Free text naming another trial that is not held out is not refused (verifier
+        # 1.7.0); verify_census_corpus reports each such row as a warning.
         _scan_record_strings_for_nct_tokens(
             doc,
             context=f"documents[{idx}]",
@@ -1827,6 +2304,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
 
     for idx, loc in enumerate(locations):
@@ -1852,6 +2330,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
+            free_text_mentions=set(),
         )
 
     provider: DirectoryPageTextProvider | None = None
@@ -1897,6 +2376,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     if args.report_out is not None:
         _write_json(Path(args.report_out), payload)
     print(json.dumps(payload, indent=2, ensure_ascii=True))
+    _warn_free_text_other_trials(payload["free_text_other_trials"])
     if report.quotations_not_compared:
         print(
             f"WARNING: {report.quotations_not_compared} of {report.citations_checked} citation "
@@ -1911,8 +2391,12 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     """Run ``plan``: firewall every input, partition the cohort and print the plan.
 
     Exit 0 when the plan is within the budget cap, 1 otherwise. Refused before
-    anything is read (exit 2): ``--ocr-dir`` without ``--pages-dir`` and an
-    ``--out-plan`` that is an input of the run. ``--pages-dir`` gives the page
+    anything is read (exit 2): ``--ocr-dir`` without ``--pages-dir``,
+    ``--doc-cache-rules-version`` without ``--doc-cache`` (or empty), and an
+    ``--out-plan`` that is an input of the run. ``--doc-cache`` lines are read
+    under one indexer rules version (``_load_doc_cache``): the one
+    ``--doc-cache-rules-version`` names, else the one the file holds; a file
+    holding several without the option is refused (exit 1). ``--pages-dir`` gives the page
     text that ``cached_complete`` needs (see ``plan_incremental_cohort``); the
     provider is told the ``(trial, sha256)`` pairs of the in-scope documents
     (``--documents`` and profile documents), as verify's is.
@@ -1922,6 +2406,14 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             "--ocr-dir needs --pages-dir: OCR page maps are read only alongside a pages "
             "directory."
         )
+    if args.doc_cache_rules_version is not None:
+        if args.doc_cache is None:
+            raise CliUsageError(
+                "--doc-cache-rules-version names the indexer rules version of --doc-cache lines, "
+                "but no --doc-cache was given."
+            )
+        if not _is_non_empty_str(args.doc_cache_rules_version):
+            raise CliUsageError("--doc-cache-rules-version must be a non-empty string.")
     _refuse_output_over_inputs(
         args.out_plan,
         output_flag="--out-plan",
@@ -1960,18 +2452,31 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 
     documents = load_jsonl(Path(args.documents)) if args.documents is not None else []
     locations = load_jsonl(Path(args.locations)) if args.locations is not None else []
-    doc_cache = _load_doc_cache_by_sha256(
-        Path(args.doc_cache) if args.doc_cache is not None else None,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
-        allow_empty_audit_set=allow_empty_audit_set,
-    )
     profiles = _load_profiles_by_nct(
         Path(args.profiles) if args.profiles is not None else None,
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
+    # The sha256 values this run's documents name: a --doc-cache line for one may declare
+    # any claimant of the document that is not held out (D4). plan_incremental_cohort
+    # firewalls the documents and checks each line read against them again.
+    posted_document_shas: set[str] = {
+        doc["sha256"] for doc in documents if type(doc.get("sha256")) is str
+    }
+    for prof_row in profiles.values():
+        for pdoc in prof_row.get("documents") or ():
+            if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str:
+                posted_document_shas.add(pdoc["sha256"])
+    doc_cache_input = _load_doc_cache(
+        Path(args.doc_cache) if args.doc_cache is not None else None,
+        rules_version=args.doc_cache_rules_version,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+        posted_document_shas=frozenset(posted_document_shas),
+    )
+    doc_cache = doc_cache_input.by_sha256
 
     provider: DirectoryPageTextProvider | None = None
     if args.pages_dir is not None:
@@ -2018,10 +2523,28 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         cost_schedule=args.cost_schedule,
         page_text_provider=provider,
         text_source=args.text_source,
+        doc_cache_rules_version=doc_cache_input.rules_version,
+        doc_cache_lines_ignored=doc_cache_input.lines_ignored,
     )
 
     if args.out_plan is not None:
         _write_json(Path(args.out_plan), plan)
+    _warn_free_text_other_trials(plan["free_text_other_trials"])
+    if doc_cache_input.lines_ignored:
+        # Left out by the operator's choice of rules version, and recorded in the plan.
+        kept_lines = doc_cache_input.lines_read - doc_cache_input.lines_ignored
+        print(
+            f"NOTE: {doc_cache_input.lines_ignored} of {doc_cache_input.lines_read} --doc-cache "
+            f"line(s) are of another indexer rules version than --doc-cache-rules-version and "
+            f"were not read ({kept_lines} read).",
+            file=sys.stderr,
+        )
+        if kept_lines == 0:
+            print(
+                "WARNING: no --doc-cache line is of the --doc-cache-rules-version given; the "
+                "plan was made as if the cache held no entry.",
+                file=sys.stderr,
+            )
     print(json.dumps(plan, indent=2, ensure_ascii=True))
     return 0 if plan["launch_approved"] else 1
 
@@ -2082,6 +2605,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Content-addressed document_index_by_sha256.jsonl",
+    )
+    p_plan.add_argument(
+        "--doc-cache-rules-version",
+        type=str,
+        default=None,
+        help=(
+            "Document-indexer rules version (indexer_rules_version) of the --doc-cache lines to "
+            "read; lines of other versions are left out. Required when --doc-cache holds lines "
+            "of more than one version"
+        ),
     )
     p_plan.add_argument(
         "--profiles",

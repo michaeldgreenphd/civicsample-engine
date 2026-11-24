@@ -2970,8 +2970,11 @@ def test_redteam_m4_directory_provider_refuses_malformed_ids(tmp_path: Path) -> 
 def test_m4_r3_loose_renderings_of_other_trials_follow_the_derived_id_rule() -> None:
     """A loose rendering names the trial its canonical ID is; only an audit ID needs no bound.
 
-    ``NCT 99800099`` (an unlisted trial) is refused like ``NCT99800099``; the
-    row's own trial written ``NCT-99800001`` is admitted; a word ending in
+    ``NCT 99800099`` (an unlisted trial) is read like ``NCT99800099``: in a
+    row's note, which is free text, it is reported as a
+    ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` warning (D3, verifier 1.7.0; it was
+    refused before), and the audit trial written ``NCT 99888888`` is refused;
+    the row's own trial written ``NCT-99800001`` is admitted; a word ending in
     ``nct`` followed by digits that are no audit ID is not a trial at all.
     """
     docs = _rt_m4_scoped_docs()
@@ -2985,8 +2988,12 @@ def test_m4_r3_loose_renderings_of_other_trials_follow_the_derived_id_rule() -> 
         )
         return issues
 
-    with pytest.raises(AuditHoldoutViolationError):
-        _verify_note(f"Same protocol as NCT {RT_UNLISTED_ID[3:]}.")
+    issues = _verify_note(f"Same protocol as NCT {RT_UNLISTED_ID[3:]}.")
+    assert [(i.code, i.severity) for i in issues] == [("NOTE_FREE_TEXT_NAMES_OTHER_TRIAL", "warning")]
+    assert RT_UNLISTED_ID[3:] not in issues[0].message
+    with pytest.raises(AuditHoldoutViolationError) as exc_info:
+        _verify_note(f"Same protocol as NCT {RT_AUDIT_ID[3:]}.")
+    assert RT_AUDIT_ID[3:] not in str(exc_info.value)
     assert _verify_note(f"Protocol of NCT-{RT_SCOPE_ID[3:]}.") == []
     assert _verify_note("Two distinct 12345678 identifiers were listed.") == []
 
@@ -3513,13 +3520,14 @@ def test_m4_r5_refusals_do_not_quote_an_unlisted_trial(tmp_path: Path) -> None:
             RT_UNLISTED_ID, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET
         )
 
-    def _note_without_scope() -> None:
-        verify_location_record(
-            _make_location(nct_id=RT_SCOPE_ID, note=f"Same protocol as {RT_UNLISTED_ID}."),
+    def _note_without_scope(named: str) -> list[Any]:
+        _, issues = verify_location_record(
+            _make_location(nct_id=RT_SCOPE_ID, note=f"Same protocol as {named}."),
             docs_by_nct={RT_SCOPE_ID: {"Prot_000.pdf": doc}},
             in_audit=False,
             audit_nct_ids=RT_AUDIT_SET,
         )
+        return issues
 
     def _url_in_scope() -> None:
         verify_document_record(
@@ -3553,9 +3561,20 @@ def test_m4_r5_refusals_do_not_quote_an_unlisted_trial(tmp_path: Path) -> None:
             doc, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=RT_SCOPE_SET, pdf_root=pdf_root
         )
 
+    # A note is free text (D3, verifier 1.7.0): the unlisted trial there is no longer
+    # refused but reported as a warning, which does not name it either; the audit trial
+    # there is still refused, without being named.
+    note_issues = _note_without_scope(RT_UNLISTED_ID)
+    assert [(i.code, i.severity) for i in note_issues] == [
+        ("NOTE_FREE_TEXT_NAMES_OTHER_TRIAL", "warning")
+    ]
+    assert all(digits not in i.message for i in note_issues), note_issues
+    with pytest.raises(AuditHoldoutViolationError) as audit_exc:
+        _note_without_scope(RT_AUDIT_ID)
+    assert RT_AUDIT_ID[3:] not in str(audit_exc.value)
+
     for call in (
         _enforce_unlisted,
-        _note_without_scope,
         _url_in_scope,
         _url_without_scope,
         _scoped_page_lookup,
@@ -3661,3 +3680,149 @@ def test_m4_r5_id_split_over_neighbouring_mapping_values_is_read_joined() -> Non
     assert _rt_f442_verify_location(
         _make_location(nct_id=RT_SCOPE_ID, extra={"x": {"label": "Version", "d": "12345678"}})
     ) == []
+
+
+# ---------------------------------------------------------------------------
+# Investigator-approved design decisions on PR #113 (fictional NCT99800001..NCT99899999).
+# ---------------------------------------------------------------------------
+
+
+def test_m4_d3_library_free_text_rule_warns_counts_and_refuses_only_holdout_ids() -> None:
+    """D3 at the library entry points: free text naming another trial is a warning, not a refusal.
+
+    ``verify_document_record``, ``verify_location_record``, ``verify_citation``
+    and ``verify_census_corpus`` read every string that is not under an
+    identifier key (``_is_identifier_key``) as free text: an audit ID there is
+    refused, a malformed token is refused, and any other well-formed ID other
+    than the record's own is reported once per record as
+    ``NOTE_FREE_TEXT_NAMES_OTHER_TRIAL`` (counts only) and counted in the
+    corpus report. The empty-audit-set precondition holds on the free-text
+    path. Identifier values (an ID key, a URL, a filename) keep the strict
+    rule.
+    """
+    scope = frozenset({RT_SCOPE_ID, RT_SCOPE_ID_2})
+    doc = _make_doc(nct_id=RT_SCOPE_ID, extra=None)
+    doc["version_label"] = f"Version 2.0 (amended after {RT_UNLISTED_ID})"
+    citation = _make_citation(quotation=f"Pooled with {RT_UNLISTED_ID} for the ITT analysis.")
+    loc = _make_location(
+        nct_id=RT_SCOPE_ID,
+        note=f"Same SAP as {RT_SCOPE_ID_2}.",
+        citations=[citation],
+    )
+
+    # verify_census_corpus: both records verified, one warning each, counts without IDs.
+    report = verify_census_corpus(
+        [doc], [loc], audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope
+    )
+    notes = [i for i in report.issues if i.code == "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL"]
+    assert [(i.severity, i.location_key is None) for i in notes] == [("warning", True), ("warning", False)]
+    assert [i for i in report.issues if i.severity == "error"] == []
+    assert (
+        report.free_text_other_trial_rows,
+        report.free_text_other_trial_ids,
+        report.free_text_other_trial_ids_in_scope,
+    ) == (2, 2, 1)
+    assert report.to_dict()["free_text_other_trials"]["distinct_ids_not_in_scope"] == 1
+    assert all(RT_UNLISTED_ID[3:] not in i.message and RT_SCOPE_ID_2 not in i.message for i in notes)
+
+    # verify_citation on its own reports its quotation; within a row the row reports it once.
+    _, cit_issues = verify_citation(
+        RT_SCOPE_ID,
+        (0, "analysis_population", "primary"),
+        citation,
+        docs_by_filename={"Prot_000.pdf": _make_doc(nct_id=RT_SCOPE_ID)},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=scope,
+    )
+    assert [i.code for i in cit_issues] == ["NOTE_FREE_TEXT_NAMES_OTHER_TRIAL"]
+    _, loc_issues = verify_location_record(
+        loc,
+        docs_by_nct={RT_SCOPE_ID: {"Prot_000.pdf": doc}},
+        audit_nct_ids=RT_AUDIT_SET,
+        in_scope_nct_ids=scope,
+    )
+    assert [i.code for i in loc_issues] == ["NOTE_FREE_TEXT_NAMES_OTHER_TRIAL"]
+    assert "names 2 trial(s) other than its own (1 in the in-scope index rows, 1 not in them)" in (
+        loc_issues[0].message
+    )
+    # The grid check reads the same rows without refusing or reporting them again.
+    assert [
+        i
+        for i in verify_trial_completeness(
+            RT_SCOPE_ID,
+            [loc],
+            expected_primary_outcomes=1,
+            allow_sparse=True,
+            audit_nct_ids=RT_AUDIT_SET,
+            in_scope_nct_ids=scope,
+        )
+        if i.code == "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL"
+    ] == []
+
+    # An audit ID in the same free text is refused at every entry point, without being named.
+    audit_doc = {**doc, "version_label": f"Version 2.0 (amended after {RT_AUDIT_ID})"}
+    audit_loc = _make_location(nct_id=RT_SCOPE_ID, note=f"Same SAP as NCT {RT_AUDIT_ID[3:]}.")
+    audit_cit = _make_citation(quotation=f"Pooled with {RT_AUDIT_ID}.")
+    for label, call in (
+        ("document", lambda: verify_document_record(audit_doc, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope)),
+        (
+            "location",
+            lambda: verify_location_record(
+                audit_loc, docs_by_nct={}, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope
+            ),
+        ),
+        (
+            "citation",
+            lambda: verify_citation(
+                RT_SCOPE_ID,
+                (0, "analysis_population", "primary"),
+                audit_cit,
+                docs_by_filename={},
+                audit_nct_ids=RT_AUDIT_SET,
+                in_scope_nct_ids=scope,
+            ),
+        ),
+        ("corpus", lambda: verify_census_corpus([audit_doc], [], audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope)),
+    ):
+        with pytest.raises(AuditHoldoutViolationError) as exc_info:
+            call()
+            pytest.fail(f"{label}: an audit ID in free text was admitted")
+        assert RT_AUDIT_ID[3:] not in str(exc_info.value), label
+
+    # The empty-audit-set precondition holds: refused unless the caller verified a
+    # zero-holdout index (allow_empty_audit_set with its scope).
+    unlisted_note = _make_location(nct_id=RT_SCOPE_ID, note=f"Same SAP as {RT_UNLISTED_ID}.")
+    with pytest.raises(AuditHoldoutViolationError):
+        verify_location_record(
+            unlisted_note, docs_by_nct={}, audit_nct_ids=frozenset(), in_scope_nct_ids=scope
+        )
+    with pytest.raises(AuditHoldoutViolationError):
+        cv_mod._check_embedded_text_ncts(
+            f"Same SAP as {RT_UNLISTED_ID}.",
+            context="note",
+            expected_nct_id=RT_SCOPE_ID,
+            audit_nct_ids=frozenset(),
+            in_scope_nct_ids=None,
+            allow_empty_audit_set=False,
+            free_text_mentions=set(),
+        )
+    _, empty_audit_issues = verify_location_record(
+        unlisted_note,
+        docs_by_nct={},
+        audit_nct_ids=frozenset(),
+        in_scope_nct_ids=scope,
+        allow_empty_audit_set=True,
+    )
+    assert "NOTE_FREE_TEXT_NAMES_OTHER_TRIAL" in [i.code for i in empty_audit_issues]
+
+    # Identifier values keep the strict rule: an unlisted trial under an ID key, in a URL or
+    # in a filename is refused, without being named.
+    for label, record in (
+        ("id_key", {**doc, "version_label": "v2", "related": {"nct_ids": [RT_UNLISTED_ID]}}),
+        ("url", {**doc, "version_label": "v2", "url": f"https://clinicaltrials.gov/study/{RT_UNLISTED_ID}"}),
+        ("filename", {**doc, "version_label": "v2", "filename": f"{RT_UNLISTED_ID}_Prot_000.pdf"}),
+    ):
+        with pytest.raises(AuditHoldoutViolationError) as exc_info:
+            verify_document_record(record, audit_nct_ids=RT_AUDIT_SET, in_scope_nct_ids=scope)
+            pytest.fail(f"{label}: an unlisted trial in an identifier field was admitted")
+        assert RT_UNLISTED_ID[3:] not in str(exc_info.value), label
