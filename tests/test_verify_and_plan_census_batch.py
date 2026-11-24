@@ -2977,13 +2977,15 @@ def test_redteam_m4_cli_index_row_own_id_fields_naming_audit_trial_refused(tmp_p
 
 
 def test_redteam_m4_plan_doc_cache_entry_for_another_trial_not_applied() -> None:
-    """A doc-cache entry declaring another trial is applied to this trial's document.
+    """A doc-cache entry tagged with another trial describes the document its sha256 names.
 
-    The entry's sha256 must be some in-scope document's, but the trial it
-    declares is never compared with the trial whose document has that sha256
-    (page maps raise on the same disagreement). An entry declaring trial 2 for
-    trial 1's document moves trial 1 from OCR recovery to the terminal $0
-    skip.
+    Before D4 the entry was refused (or had to leave the partitions as without
+    it): it declares trial 2 for trial 1's document. Since D4 (planner 1.9.0)
+    a doc-cache entry, like a page map, is content-addressed: its sha256 is a
+    document trial 1 posts, so it describes trial 1's document whichever
+    trial it is tagged with (one document can be posted by several trials,
+    and the tag names one of them), and it is applied. A tag in the audit set
+    is still refused, before the entry is used.
     """
     index_rows = _rt_index_rows() + [
         {
@@ -3018,14 +3020,16 @@ def test_redteam_m4_plan_doc_cache_entry_for_another_trial_not_applied() -> None
     foreign = {
         SHA_1: {"sha256": SHA_1, "nct_id": RT_SCOPE_ID_2, "unreadable_recovery_bucket": "redacted_cci_ppd"}
     }
-    try:
-        plan = _plan(foreign)
-    except CitationVerificationError:
-        return
-    assert plan["partitions"] == control["partitions"], (
-        "a doc-cache entry declaring trial 2 reclassified trial 1's document: "
-        f"{plan['partitions']}"
-    )
+    plan = _plan(foreign)
+    assert plan["partitions"]["unreadable_terminal_redacted"] == [RT_SCOPE_ID], plan["partitions"]
+    assert plan["partitions"]["unreadable_recoverable_ocr"] == []
+    # The same entry tagged with the audit trial is refused, without naming it.
+    held_out = {
+        SHA_1: {"sha256": SHA_1, "nct_id": RT_AUDIT_ID, "unreadable_recovery_bucket": "redacted_cci_ppd"}
+    }
+    with pytest.raises(AuditHoldoutViolationError) as exc_info:
+        _plan(held_out)
+    assert RT_AUDIT_ID not in str(exc_info.value)
 
 
 def test_redteam_m4_cli_conflicting_doc_cache_rows_refused(tmp_path: Path) -> None:
@@ -4732,3 +4736,194 @@ def test_m4_d3_free_text_naming_another_trial_warns_and_only_a_holdout_stops_the
         case = _rt_m4_inputs(tmp_path, f"d3_strict_{label}", documents=docs, locations=rows, index_rows=_rt_f442_index_rows())
         rc, printed = _rt_f442_run(["verify", *case, "--pages-dir", str(maps)], capsys)
         assert rc == 2, (label, printed)
+
+
+def _d4_write_m1_page_map(pages_dir: Path, sha256: str, tagged: str, pages: list[str]) -> Path:
+    """Write ``pages/<sha[:2]>/<sha>.json.gz`` as m1's ``DocumentCacheStore.save_cached_pages`` does.
+
+    m1 tags the map with the trial it first extracted the bytes for; a second
+    trial posting the same bytes reuses the map, and the tag keeps naming the
+    first.
+    """
+    import gzip
+
+    target = pages_dir / sha256[:2] / f"{sha256}.json.gz"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "sha256": sha256,
+        "byte_count": 4096,
+        "physical_pages": len(pages),
+        "text_source": "pdfkit",
+        "extracted_at": "2026-11-21T00:00:00Z",
+        "pipeline_commit": "a" * 40,
+        "pages": pages,
+        "nct_id": tagged,
+    }
+    target.write_bytes(gzip.compress(json.dumps(payload).encode("utf-8")))
+    return pages_dir
+
+
+def _d4_index_rows(*nct_ids: str) -> list[dict[str, Any]]:
+    """In-scope index rows for ``nct_ids`` (as ``_rt_index_rows``' first), plus the audit row."""
+    template, audit_row = _rt_index_rows()
+    return [{**template, "nct_id": nct} for nct in nct_ids] + [audit_row]
+
+
+def test_m4_d4_document_posted_by_two_trials_verifies_for_both(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D4: one byte-identical document posted by two in-scope trials verifies for both.
+
+    Before: m1 tags a page map with the first trial it extracted the bytes
+    for, so verify with page text refused the second trial's quotations ("Page
+    map ... declares nct_id='<first>', expected '<second>'", exit 1), and in a
+    shard whose index lacks the first trial the preflight scan refused the
+    map (exit 2). Now a content-addressed map (a ``<sha256>`` map, a JSONL row's
+    sha256) of a document an in-scope document of this run names is served to
+    every trial that posts it, whichever trial it is tagged with; two JSONL
+    rows for the one document tagged with each trial are one document. A tag
+    or a claimant in the audit set is refused (exit 2) before any page text is
+    read.
+    """
+    first, second = RT_SCOPE_ID, RT_SCOPE_ID_2
+    documents = [_doc(first, "Prot_000.pdf", SHA_1), _doc(second, "Prot_000.pdf", SHA_1)]
+    locations = [
+        *_complete_primary_locations(first, "Prot_000.pdf", SHA_1),
+        *_complete_primary_locations(second, "Prot_000.pdf", SHA_1),
+    ]
+    m1_pages = _d4_write_m1_page_map(tmp_path / "d4_pages", SHA_1, first, _RT_M4_PAGES)
+
+    def verify(name: str, index_rows: list[dict[str, Any]], docs: list[dict[str, Any]], rows: list[dict[str, Any]], pages: Path) -> tuple[int, str, dict[str, Any] | None]:
+        args = _rt_m4_inputs(tmp_path, name, documents=docs, locations=rows, index_rows=index_rows)
+        report_path = tmp_path / f"{name}_report.json"
+        rc, printed = _rt_f442_run(
+            ["verify", *args, "--pages-dir", str(pages), "--report-out", str(report_path)], capsys
+        )
+        report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else None
+        return rc, printed, report
+
+    # Both trials of one index: quotations compared for both, against the map tagged with one.
+    rc, printed, report = verify("d4_both", _d4_index_rows(first, second), documents, locations, m1_pages)
+    assert rc == 0, printed
+    assert report is not None and report["ok"] is True
+    assert report["exact_ws_matches"] == 2 * len(ELEMENTS) and report["quotations_not_compared"] == 0
+
+    # A shard whose index lacks the trial the map is tagged with.
+    rc, printed, report = verify(
+        "d4_shard",
+        _d4_index_rows(second),
+        documents[1:],
+        _complete_primary_locations(second, "Prot_000.pdf", SHA_1),
+        m1_pages,
+    )
+    assert rc == 0, printed
+    assert report is not None and report["exact_ws_matches"] == len(ELEMENTS)
+
+    # JSONL page maps: one row per trial for the one document.
+    jsonl_pages = tmp_path / "d4_jsonl_maps"
+    jsonl_pages.mkdir()
+    _write_jsonl(
+        jsonl_pages / "maps.jsonl",
+        [
+            {"sha256": SHA_1, "nct_id": nct, "filename": "Prot_000.pdf", "pages": _RT_M4_PAGES}
+            for nct in (first, second)
+        ],
+    )
+    rc, printed, report = verify("d4_jsonl", _d4_index_rows(first, second), documents, locations, jsonl_pages)
+    assert rc == 0, printed
+    assert report is not None and report["exact_ws_matches"] == 2 * len(ELEMENTS)
+
+    # A claimant in the audit set: refused (exit 2) before any page text is read.
+    import src.citation_verifier as cv_mod
+
+    parsed: list[str] = []
+    original_parse = cv_mod.DirectoryPageTextProvider._parse_page_map_payload
+
+    def recording_parse(payload: Any, *, source_desc: str = "page map") -> Any:
+        parsed.append(source_desc)
+        return original_parse(payload, source_desc=source_desc)
+
+    monkeypatch.setattr(
+        cv_mod.DirectoryPageTextProvider, "_parse_page_map_payload", staticmethod(recording_parse)
+    )
+    held_out_tag = _d4_write_m1_page_map(tmp_path / "d4_audit_tag", SHA_1, RT_AUDIT_ID, _RT_M4_PAGES)
+    held_out_jsonl = tmp_path / "d4_audit_jsonl"
+    held_out_jsonl.mkdir()
+    _write_jsonl(
+        held_out_jsonl / "maps.jsonl",
+        [
+            {"sha256": SHA_1, "nct_id": nct, "filename": "Prot_000.pdf", "pages": _RT_M4_PAGES}
+            for nct in (first, RT_AUDIT_ID)
+        ],
+    )
+    audit_claimant_doc = _doc(RT_AUDIT_ID, "Prot_000.pdf", SHA_1)
+    for label, docs, pages in (
+        ("map_tagged_with_the_audit_trial", documents, held_out_tag),
+        ("jsonl_row_of_the_audit_trial", documents, held_out_jsonl),
+        ("audit_trial_posts_the_document", [*documents, audit_claimant_doc], m1_pages),
+    ):
+        parsed.clear()
+        rc, printed, report = verify(f"d4_{label}", _d4_index_rows(first, second), docs, locations, pages)
+        assert rc == 2 and report is None, (label, printed)
+        assert parsed == [], (label, parsed)
+        assert RT_AUDIT_ID[3:] not in printed, (label, printed)
+
+    # The library provider without referenced documents does not know who posts a document,
+    # so a map tagged with another trial keeps the strict rule there.
+    unreferenced = cv_mod.DirectoryPageTextProvider(
+        m1_pages, audit_nct_ids=frozenset({RT_AUDIT_ID}), in_scope_nct_ids=frozenset({first, second})
+    )
+    with pytest.raises(CitationVerificationError, match="declares nct_id"):
+        unreferenced.get_page_text(second, "Prot_000.pdf", SHA_1, 2)
+
+
+def test_m4_d4_plan_files_a_shared_document_for_every_trial_that_posts_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D4 in plan: a shared document's page map and doc-cache entry serve every trial posting it.
+
+    Both trials posting one document are cached_complete with page text from a
+    map tagged with one of them; in a shard whose index lacks the tagged trial,
+    a doc-cache line declaring it for the document is read (it was refused,
+    exit 2); a line or map tagged with the audit trial is refused (exit 2).
+    """
+    first, second = RT_SCOPE_ID, RT_SCOPE_ID_2
+    documents = [_doc(first, "Prot_000.pdf", SHA_1), _doc(second, "Prot_000.pdf", SHA_1)]
+    locations = [
+        *_complete_primary_locations(first, "Prot_000.pdf", SHA_1),
+        *_complete_primary_locations(second, "Prot_000.pdf", SHA_1),
+    ]
+    m1_pages = _d4_write_m1_page_map(tmp_path / "d4p_pages", SHA_1, first, _RT_M4_PAGES)
+    plan_path = tmp_path / "d4p_plan.json"
+
+    def plan(name: str, index_rows: list[dict[str, Any]], docs: list[dict[str, Any]], rows: list[dict[str, Any]], *extra: str) -> tuple[int, str, dict[str, Any] | None]:
+        if plan_path.exists():
+            plan_path.unlink()
+        args = _rt_m4_inputs(tmp_path, name, documents=docs, locations=rows, index_rows=index_rows)
+        rc, printed = _rt_f442_run(["plan", *args, "--out-plan", str(plan_path), *extra], capsys)
+        return rc, printed, (json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else None)
+
+    rc, printed, result = plan("d4p_both", _d4_index_rows(first, second), documents, locations, "--pages-dir", str(m1_pages))
+    assert rc == 0 and result is not None, printed
+    assert result["partitions"]["cached_complete"] == [first, second], result["partitions"]
+
+    shard_rows = _complete_primary_locations(second, "Prot_000.pdf", SHA_1)
+    cache = tmp_path / "d4p_cache.jsonl"
+    _write_jsonl(cache, [{**_m1_index_line(SHA_1, _D_M1_RULES_VERSION), "nct_id": first}])
+    rc, printed, result = plan(
+        "d4p_shard", _d4_index_rows(second), documents[1:], shard_rows,
+        "--pages-dir", str(m1_pages), "--doc-cache", str(cache),
+    )
+    assert rc == 0 and result is not None, printed
+    assert result["partitions"]["cached_complete"] == [second], result["partitions"]
+
+    held_out_cache = tmp_path / "d4p_audit_cache.jsonl"
+    _write_jsonl(held_out_cache, [{**_m1_index_line(SHA_1, _D_M1_RULES_VERSION), "nct_id": RT_AUDIT_ID}])
+    held_out_tag = _d4_write_m1_page_map(tmp_path / "d4p_audit_tag", SHA_1, RT_AUDIT_ID, _RT_M4_PAGES)
+    for label, extra in (
+        ("doc_cache_line_of_the_audit_trial", ("--doc-cache", str(held_out_cache))),
+        ("map_tagged_with_the_audit_trial", ("--pages-dir", str(held_out_tag))),
+    ):
+        rc, printed, result = plan(f"d4p_{label}", _d4_index_rows(second), documents[1:], shard_rows, *extra)
+        assert rc == 2 and result is None, (label, printed)
+        assert RT_AUDIT_ID[3:] not in printed, (label, printed)

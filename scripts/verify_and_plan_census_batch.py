@@ -37,35 +37,40 @@ Firewall basis: every ``enforce_audit_holdout`` call here passes
 ``in_scope_nct_ids`` (the index rows carrying explicit ``in_audit=False``) and
 no ``in_audit``, so membership of that set, read from the index, is what admits
 a trial; no call writes a literal ``in_audit=False`` on a trial's behalf. A
-``--doc-cache`` entry names no trial of its own, so it is admitted only when
-its sha256 is a document of an in-scope trial and none of its keys or strings
-names an audit or malformed NCT ID (nor an unlisted one outside free text);
-an entry that does name a trial must name one whose document has that
-sha256, and two different rows for one sha256 raise, as do two different ``--profiles`` rows for one trial (an
-identical repeat is kept once). ``--doc-cache`` lines are read under one
-document-indexer rules version: ``--doc-cache-rules-version`` when given
-(lines of other versions are left out and counted), else the one the file
-holds; a file holding lines of several versions without the option is
-refused, and the plan records the version (``doc_cache_rules_version``). An in-scope index row may not name an audit
-trial in any key or string (an alias included), and its classic ``NCTId``
-must be its ``nct_id``.
-``--documents``, ``--locations``
-and ``--profiles`` rows follow the same token rule under every key and string,
-with the row's own trial also admitted. ``--documents`` and ``--locations`` rows
-and ``--profiles`` documents carry the F6 provenance stamps, except the
-documents of a ``--profiles`` row exactly as the document indexer (m1) writes
-it, which no model produced (``_is_m1_deterministic_profile_document``). ``verify --pages-dir`` hands the page
-provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
-content-addressed page map outside them is opened. ``plan`` files a trial as
-``cached_complete`` only when every one of its current documents passes
-``verify_document_record`` and every one of its rows passes
-``verify_location_record`` with page text (``--pages-dir``), so its quotations
-were found on their pages. An index row's missing ``protocol``/``sap`` flag is
-unknown, not "no document"; a malformed ``cohorts`` field raises. Every input
-file is parsed refusing repeated JSON keys, and an index holding rows under
-more than one of ``data``/``rows``/``trials`` is refused. A document without a
-sha256 is fingerprinted as present but unidentified (``DOC_SHA256_ABSENT``).
-``--report-out`` and ``--out-plan`` may not name an input of the run.
+``--doc-cache`` entry names no trial of its own, so it is admitted only when its
+sha256 is a document of an in-scope trial and none of its keys or strings names
+an audit or malformed NCT ID (nor an unlisted one outside free text); a trial it
+declares under an ID key is a claimant of that document, refused when it is held
+out and otherwise admitted (a document posted by several trials, planner 1.9.0),
+and two different rows for one sha256 raise, as do two different ``--profiles``
+rows for one trial (an identical repeat is kept once). ``--doc-cache`` lines are
+read under one document-indexer rules version: ``--doc-cache-rules-version``
+when given (lines of other versions are left out and counted), else the one the
+file holds; a file holding lines of several versions without the option is
+refused, and the plan records the version (``doc_cache_rules_version``). An
+in-scope index row may not name an audit trial in any key or string (an alias
+included), and its classic ``NCTId`` must be its ``nct_id``. ``--documents``,
+``--locations`` and ``--profiles`` rows follow the same token rule under every
+key and string, with the row's own trial also admitted. ``--documents`` and
+``--locations`` rows and ``--profiles`` documents carry the F6 provenance
+stamps, except the documents of a ``--profiles`` row exactly as the document
+indexer (m1) writes it, which no model produced
+(``_is_m1_deterministic_profile_document``). ``verify --pages-dir`` hands the
+page provider the ``(nct_id, sha256)`` pairs of the in-scope documents, so no
+content-addressed page map outside them is opened. A content-addressed map of
+such a document is served to every in-scope trial that posts it, whichever trial
+it is tagged with (one document posted by several trials, tagged with the first;
+verifier 1.7.0), unless the tag is held out, which refuses the run before any
+page text is read. ``plan`` files a trial as ``cached_complete`` only when every
+one of its current documents passes ``verify_document_record`` and every one of
+its rows passes ``verify_location_record`` with page text (``--pages-dir``), so
+its quotations were found on their pages. An index row's missing
+``protocol``/``sap`` flag is unknown, not "no document"; a malformed ``cohorts``
+field raises. Every input file is parsed refusing repeated JSON keys, and an
+index holding rows under more than one of ``data``/``rows``/``trials`` is
+refused. A document without a sha256 is fingerprinted as present but
+unidentified (``DOC_SHA256_ABSENT``). ``--report-out`` and ``--out-plan`` may
+not name an input of the run.
 
 Runtime dependencies:
 - Python 3.11+ standard library (``argparse``, ``datetime``, ``gzip``,
@@ -81,7 +86,9 @@ Exit codes:
 - ``1``: Verification errors found, a quotation compared with no page text
   (``verify`` without ``--pages-dir``: the report counts them in
   ``quotations_not_compared`` and is not ok), schema/outcome-count contract
-  failure, or projected batch spend exceeds budget cap.
+  failure, a ``--doc-cache`` holding lines of several indexer rules versions
+  without ``--doc-cache-rules-version``, or projected batch spend exceeds
+  budget cap.
 - ``2``: CLI usage error (e.g. missing ``--index``, ``--ocr-dir`` without
   ``--pages-dir``, an output path that is an input, an input or output path
   that cannot be read or written: missing, a directory, unreadable), strict
@@ -117,6 +124,7 @@ from src.citation_verifier import (  # noqa: E402
     _prescan_nested_nct_fields,
     _scan_record_strings_for_nct_tokens,
     _scan_strings_for_audit_nct_tokens,
+    _shared_document_scope,
     _validate_nested_firewall_metadata,
     AuditHoldoutViolationError,
     CitationVerificationError,
@@ -162,7 +170,9 @@ PLANNER_SCHEMA_VERSION: Final[int] = 1
 # one; several without the option are refused), recorded as doc_cache_rules_version. Free
 # text (a quotation, a note, a registry-copied title, indexed document text) naming a trial
 # that is not held out is counted (free_text_other_trials), not refused; structural IDs, keys,
-# URLs and filenames keep the strict rule, and an audit ID anywhere is still refused.
+# URLs and filenames keep the strict rule, and an audit ID anywhere is still refused. A
+# document posted by several in-scope trials (one sha256) is planned for each: a doc-cache
+# entry or page map for it may be tagged with any claimant that is not held out.
 PLANNER_RULES_VERSION: Final[str] = "1.9.0"
 
 PlanMode = Literal["resume-unstarted", "recover-unreadable", "incremental-delta"]
@@ -617,6 +627,7 @@ def _validate_doc_cache_entry(
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
     free_text_mentions: set[str] | None = None,
+    shared_document: bool = False,
 ) -> tuple[str, frozenset[str]]:
     """Firewall one doc-cache entry and return its sha256 and the trials it declares.
 
@@ -630,22 +641,36 @@ def _validate_doc_cache_entry(
     no unlisted one in a key or identifier value; a trial its indexed text
     names (free text, planner 1.9.0) goes to ``free_text_mentions`` when given.
     The trials it names under ID keys (``nct_id``, ``nct_ids``, at any depth)
-    are returned: when it names any, ``plan_incremental_cohort`` requires them
-    to be trials whose documents have that sha256.
+    are returned.
+
+    ``shared_document`` (planner 1.9.0, D4): the caller passes True when the
+    entry's sha256 is a document an in-scope trial of this run posts. The entry
+    describes that content, which several trials can post, so each trial it
+    declares is a claimant of the document (``_shared_document_scope``): one
+    in the audit set is refused, as before; any other (another in-scope trial,
+    or one absent from this run's index, such as another shard's) is admitted.
+    Without it a declared trial must be in scope, as before.
     """
+    entry_scope = _shared_document_scope(
+        row,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        shared_document=shared_document,
+        context=context,
+    )
     declared = _validate_nested_firewall_metadata(
         row,
         context=context,
         expected_nct_id=None,
         audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        in_scope_nct_ids=entry_scope,
         allow_empty_audit_set=allow_empty_audit_set,
     )
     _scan_strings_for_nct_tokens(
         row,
         context=context,
         audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
+        in_scope_nct_ids=entry_scope if entry_scope is not None else in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
         free_text_mentions=free_text_mentions,
     )
@@ -756,6 +781,7 @@ def _load_doc_cache(
     audit_nct_ids: frozenset[str],
     in_scope_nct_ids: frozenset[str],
     allow_empty_audit_set: bool,
+    posted_document_shas: AbstractSet[str] = frozenset(),
 ) -> DocCacheInput:
     """Load ``--doc-cache`` lines of one indexer rules version keyed by sha256, firewalling each.
 
@@ -772,6 +798,11 @@ def _load_doc_cache(
     is recovered by OCR or skipped at $0, so they raise. An identical repeat is
     kept once. A sha256 with no line of the version read is a document the
     cache says nothing about, as when it has no line at all.
+    ``posted_document_shas`` are the sha256 values of this run's
+    ``--documents`` rows and profile documents: a line for one of them may
+    declare any trial that is not held out (a shared document, D4,
+    ``_validate_doc_cache_entry``); ``plan_incremental_cohort`` then checks
+    each line read against the firewalled documents.
     """
     if path is None:
         return DocCacheInput({}, rules_version, 0, 0)
@@ -789,6 +820,8 @@ def _load_doc_cache(
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
             free_text_mentions=set(),
+            shared_document=type(row.get("sha256")) is str
+            and row["sha256"] in posted_document_shas,
         )
         shas.append(sha)
     versions = [
@@ -1672,13 +1705,17 @@ def plan_incremental_cohort(
             allow_empty_audit_set=allow_empty_audit_set,
         )
         entry_mentions: set[str] = set()
-        entry_sha, entry_trials = _validate_doc_cache_entry(
+        # An entry for a document an in-scope trial posts may declare any claimant of that
+        # document that is not held out (D4); an audit claimant is refused.
+        entry_sha, _ = _validate_doc_cache_entry(
             cache_row,
             context=f"doc_cache_by_sha256[{sha_key!r}]",
             audit_nct_ids=audit_nct_ids,
             in_scope_nct_ids=in_scope_nct_ids,
             allow_empty_audit_set=allow_empty_audit_set,
             free_text_mentions=entry_mentions,
+            shared_document=type(cache_row.get("sha256")) is str
+            and cache_row["sha256"] in in_scope_doc_shas,
         )
         cache_mentions[sha_key] = entry_mentions
         if sha_key != entry_sha:
@@ -1692,17 +1729,13 @@ def plan_incremental_cohort(
                 f"document of an in-scope trial in documents or profiles, so it cannot be tied "
                 f"to an in-scope trial."
             )
-        # An entry that names a trial must name one whose document has its sha256: an entry
-        # declaring trial B applied to trial A's document would move A between partitions
-        # (OCR recovery or the terminal $0 skip) on another trial's description, as a page
-        # map declaring another trial is refused.
-        foreign_trials = entry_trials - trials_by_doc_sha[entry_sha]
-        if foreign_trials:
-            raise AuditHoldoutViolationError(
-                f"doc_cache_by_sha256 entry sha256={entry_sha!r} declares "
-                f"{len(foreign_trials)} trial(s) whose documents do not have that sha256; it "
-                f"describes another trial's document."
-            )
+        # The entry describes the content with its sha256, which an in-scope trial posts
+        # (checked above). A trial it declares is a claimant of that content: one in the
+        # audit set was refused by the walk; any other is the tag of a document posted by
+        # several trials (the document indexer tags with the first trial it indexed the
+        # bytes for), and the entry describes the requesting trial's document as much as
+        # its own (planner 1.9.0, D4; it was refused when no document of this run's that
+        # trial had the sha256).
 
     # Every entry is firewalled above; the plan then reads the entries of one indexer
     # rules version only (planner 1.9.0, D2). An entry left out is a document the cache
@@ -2419,20 +2452,31 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 
     documents = load_jsonl(Path(args.documents)) if args.documents is not None else []
     locations = load_jsonl(Path(args.locations)) if args.locations is not None else []
-    doc_cache_input = _load_doc_cache(
-        Path(args.doc_cache) if args.doc_cache is not None else None,
-        rules_version=args.doc_cache_rules_version,
-        audit_nct_ids=audit_nct_ids,
-        in_scope_nct_ids=in_scope_nct_ids,
-        allow_empty_audit_set=allow_empty_audit_set,
-    )
-    doc_cache = doc_cache_input.by_sha256
     profiles = _load_profiles_by_nct(
         Path(args.profiles) if args.profiles is not None else None,
         audit_nct_ids=audit_nct_ids,
         in_scope_nct_ids=in_scope_nct_ids,
         allow_empty_audit_set=allow_empty_audit_set,
     )
+    # The sha256 values this run's documents name: a --doc-cache line for one may declare
+    # any claimant of the document that is not held out (D4). plan_incremental_cohort
+    # firewalls the documents and checks each line read against them again.
+    posted_document_shas: set[str] = {
+        doc["sha256"] for doc in documents if type(doc.get("sha256")) is str
+    }
+    for prof_row in profiles.values():
+        for pdoc in prof_row.get("documents") or ():
+            if isinstance(pdoc, Mapping) and type(pdoc.get("sha256")) is str:
+                posted_document_shas.add(pdoc["sha256"])
+    doc_cache_input = _load_doc_cache(
+        Path(args.doc_cache) if args.doc_cache is not None else None,
+        rules_version=args.doc_cache_rules_version,
+        audit_nct_ids=audit_nct_ids,
+        in_scope_nct_ids=in_scope_nct_ids,
+        allow_empty_audit_set=allow_empty_audit_set,
+        posted_document_shas=frozenset(posted_document_shas),
+    )
+    doc_cache = doc_cache_input.by_sha256
 
     provider: DirectoryPageTextProvider | None = None
     if args.pages_dir is not None:

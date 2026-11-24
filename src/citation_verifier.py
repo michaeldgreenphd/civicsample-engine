@@ -85,7 +85,12 @@ Key invariants:
   admits nothing. ``DirectoryPageTextProvider`` refuses symlinks, firewalls
   its roots as given and as resolved, never opens a ``<sha256>`` map that no
   referenced document names (when given ``referenced_documents``), and serves
-  a map only when the trial and sha256 it declares agree with the request.
+  a map only when the trial and sha256 it declares agree with the request,
+  except that a content-addressed map of a referenced document is served to
+  every trial a referenced document ties to that sha256, whichever trial it
+  is tagged with, unless the tag is held out (one document posted by several
+  trials; ``_check_map_trial``). Every JSONL row of every root passes the
+  firewall before any row's pages are read.
   A list-shaped map is firewalled like a mapping; a map declaring two trials
   or two sha256 values is refused; a JSONL row naming no document and a
   single-file root declaring no sha256 are refused, never dropped or served
@@ -183,6 +188,9 @@ __version__: Final[str] = "1.7.0"
 # Free text of a record (a string not under an identifier key: a quotation, a note, a
 # registry-copied title, indexed document text) refuses only an audit-holdout ID; any other
 # well-formed ID is a NOTE_FREE_TEXT_NAMES_OTHER_TRIAL warning with counts, not a refusal.
+# A content-addressed page map of a document a referenced in-scope document names is served
+# to every trial that posts it, whichever trial it is tagged with, unless the tag is held out;
+# every JSONL page-map row of every root is firewalled before any row's pages are read.
 VERIFIER_RULES_VERSION: Final[str] = "1.7.0"
 
 STRICT_NCT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^NCT[0-9]{8}$", re.ASCII)
@@ -1517,6 +1525,64 @@ def _prescan_nested_nct_fields(obj: Any, *, context: str) -> None:
                 _prescan_nested_nct_fields(item, context=f"{context}[{idx}]")
 
 
+def _named_key_trial_ids(obj: Any) -> set[str]:
+    """The trial IDs ``obj`` names under the named ID keys (``_NCT_FIELD_KEYS``, ``_NCT_LIST_KEYS``).
+
+    At any depth, as ``_validate_nested_firewall_metadata`` reads them; only
+    string values are returned. It decides nothing: call it after
+    ``_prescan_nested_nct_fields`` (which refuses a malformed value there), and
+    firewall each ID returned, as ``_shared_document_scope`` does.
+    """
+    found: set[str] = set()
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, Mapping):
+            for raw_k, val in node.items():
+                key = str(raw_k)
+                if key in _NCT_FIELD_KEYS and type(val) is str:
+                    found.add(val)
+                elif key in _NCT_LIST_KEYS and isinstance(val, list):
+                    found.update(item for item in val if type(item) is str)
+                elif isinstance(val, (Mapping, list, tuple)):
+                    _walk(val)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                _walk(item)
+
+    _walk(obj)
+    return found
+
+
+def _shared_document_scope(
+    record: Any,
+    *,
+    audit_nct_ids: frozenset[str],
+    in_scope_nct_ids: frozenset[str] | None,
+    shared_document: bool,
+    context: str,
+) -> frozenset[str] | None:
+    """The in-scope set a content-addressed record of a shared document is firewalled under.
+
+    Method (verifier 1.7.0, D4): a page map or doc-cache entry is keyed by a
+    sha256, and one document (one sha256) can be posted by several trials; the
+    record's trial tag names one of them (the document indexer tags a page map
+    with the trial it was first extracted for, and the tag keeps naming it when
+    another trial posts the same bytes). When ``shared_document`` is True (the
+    caller has established that the sha256 is a document an in-scope trial of
+    this run posts), each trial the record names under an ID key is a claimant
+    of that document: an audit trial refuses (by position, before anything is
+    read: the walk run under the returned set refuses it), and any other is
+    admitted for this record alone, by adding it to the set returned. Otherwise,
+    or with no in-scope set, the set is returned unchanged and the tag follows
+    the derived-ID rule as before.
+    """
+    if not shared_document or in_scope_nct_ids is None:
+        return in_scope_nct_ids
+    _prescan_nested_nct_fields(record, context=context)
+    claimants = _named_key_trial_ids(record) - audit_nct_ids
+    return in_scope_nct_ids | frozenset(claimants)
+
+
 def _validate_nested_firewall_metadata(
     obj: Any,
     *,
@@ -2723,7 +2789,11 @@ class DirectoryPageTextProvider:
       declaring such a sha256 is refused, and ``get_page_text`` refuses a pair
       not listed. Without it (library use) every map is opened at preflight.
     - A map is served for a request only when what it declares about itself
-      agrees: a declared ``nct_id`` other than the requested trial raises, a
+      agrees: a declared ``nct_id`` other than the requested trial raises
+      (unless the map is content-addressed and ``referenced_documents`` ties
+      its sha256 to the requested trial: one document posted by several
+      trials, tagged with one of them, D4; a tag in the audit set refuses at
+      preflight, before any page text is read), a
       ``<sha256>`` map declaring another sha256 raises, and a trial-keyed map
       (``(nct_id, filename)``) declaring another sha256 is another version of
       the document and is not served. A trial-keyed map declaring no sha256 is
@@ -2803,6 +2873,11 @@ class DirectoryPageTextProvider:
         ] = {}
         self._jsonl_pages: dict[tuple[str, str], _PageMap] = {}
         self._jsonl_trial_pages: dict[tuple[str, str, str], _PageMap] = {}
+        # JSONL rows admitted by the preflight firewall, whose pages are not read yet:
+        # (row, source, declared trial, declared sha256, filename to file it under, source).
+        self._pending_jsonl_rows: list[
+            tuple[Mapping[str, Any], str, str | None, str | None, str | None, str]
+        ] = []
         self._preflight_scan_all()
 
     def _validate_referenced_documents(
@@ -2999,7 +3074,23 @@ class DirectoryPageTextProvider:
             meta[key] = val
         return meta
 
-    def _validate_payload_firewall(self, payload: Any, *, source_desc: str) -> str | None:
+    def _is_shared_document(self, sha256: str | None) -> bool:
+        """True when ``sha256`` is a document an in-scope document of this run names (D4).
+
+        Only with ``referenced_documents`` (the CLI passes the in-scope
+        documents' ``(nct_id, sha256)`` pairs): without them the provider does
+        not know which trials post a document, and a map's trial tag keeps the
+        strict rule.
+        """
+        return (
+            sha256 is not None
+            and self._referenced_sha256s is not None
+            and sha256 in self._referenced_sha256s
+        )
+
+    def _validate_payload_firewall(
+        self, payload: Any, *, source_desc: str, content_sha256: str | None = None
+    ) -> str | None:
         """Firewall a page-map payload and return the trial it declares, if any.
 
         The named-key walk (``nct_id``, ``nctId``, ``nct_ids``, the holdout
@@ -3010,15 +3101,33 @@ class DirectoryPageTextProvider:
         keys, at any depth, are what it declares: one trial is returned, none
         gives ``None``, and two different trials raise, since one map is one
         document's text and cannot be two trials'.
+
+        ``content_sha256`` is the sha256 the map is keyed by (its ``<sha256>``
+        name, or the sha256 a JSONL row or an anonymous single-file root
+        declares); ``None`` for a map keyed by trial and filename. When it is a
+        document an in-scope document of this run names
+        (``_is_shared_document``), the map is that document's text whichever
+        trial it is tagged with, so its tag is read as a claimant of a shared
+        document (``_shared_document_scope``, verifier 1.7.0): a tag in the
+        audit set is refused before any page text is read, as before; a tag
+        absent from this run's in-scope rows (another shard's trial) is
+        admitted for this map. A trial-keyed map's tag keeps the strict rule.
         """
         if not isinstance(payload, (Mapping, list)):
             return None
+        map_scope = _shared_document_scope(
+            payload,
+            audit_nct_ids=self._audit_nct_ids,
+            in_scope_nct_ids=self._in_scope_nct_ids,
+            shared_document=self._is_shared_document(content_sha256),
+            context=source_desc,
+        )
         discovered = _validate_nested_firewall_metadata(
             payload,
             context=source_desc,
             expected_nct_id=None,
             audit_nct_ids=self._audit_nct_ids,
-            in_scope_nct_ids=self._in_scope_nct_ids,
+            in_scope_nct_ids=map_scope,
             allow_empty_audit_set=self._allow_empty_audit_set,
         )
         _scan_record_strings_for_nct_tokens(
@@ -3026,7 +3135,7 @@ class DirectoryPageTextProvider:
             context=source_desc,
             expected_nct_id=None,
             audit_nct_ids=self._audit_nct_ids,
-            in_scope_nct_ids=self._in_scope_nct_ids,
+            in_scope_nct_ids=map_scope,
             allow_empty_audit_set=self._allow_empty_audit_set,
         )
         declared = sorted(set(discovered))
@@ -3036,6 +3145,32 @@ class DirectoryPageTextProvider:
                 f"map is one document's text."
             )
         return declared[0] if declared else None
+
+    @staticmethod
+    def _peek_declared_sha256(payload: Any) -> str | None:
+        """The sha256 a map declares when every declaration is 64 lowercase hex and agrees, else ``None``.
+
+        Raises nothing: it runs before the payload is firewalled, so it must not
+        quote a value. A map whose declarations are malformed or disagree is
+        refused later, after the firewall, by ``_declared_sha256``.
+        """
+        declared: list[Any] = []
+        page_objects: list[Any] = []
+        if isinstance(payload, list):
+            page_objects = payload
+        elif isinstance(payload, Mapping):
+            if "sha256" in payload:
+                declared.append(payload["sha256"])
+            if isinstance(payload.get("pages"), list):
+                page_objects = payload["pages"]
+        for item in page_objects:
+            if isinstance(item, Mapping) and "sha256" in item:
+                declared.append(item["sha256"])
+        if not declared or any(
+            type(raw) is not str or _SHA256_RE.fullmatch(raw) is None for raw in declared
+        ):
+            return None
+        return declared[0] if len(set(declared)) == 1 else None
 
     @staticmethod
     def _declared_sha256(payload: Any, *, source_desc: str) -> str | None:
@@ -3100,13 +3235,18 @@ class DirectoryPageTextProvider:
         store: dict[Any, _PageMap],
         key: Any,
         entry: _PageMap,
+        *,
+        shared_document: bool = False,
     ) -> None:
         """Store a JSONL page map, refusing a second, different map under the same key.
 
         Two rows for one document version and text source that disagree leave
         no way to tell which text is the document's, so the run stops instead
         of letting the later row win. An identical repeat is harmless and kept
-        once.
+        once. With ``shared_document`` (a sha256 key of a document an in-scope
+        document of this run names, D4), two rows with the same pages tagged
+        with two trials are one document posted by both: the first is kept,
+        and every claimant is served by ``_check_map_trial``.
         """
         existing = store.get(key)
         if existing is None:
@@ -3114,7 +3254,10 @@ class DirectoryPageTextProvider:
             return
         if (
             dict(existing.pages) != dict(entry.pages)
-            or existing.declared_nct_id != entry.declared_nct_id
+            or (
+                existing.declared_nct_id != entry.declared_nct_id
+                and not shared_document
+            )
             or existing.declared_sha256 != entry.declared_sha256
         ):
             raise CitationVerificationError(
@@ -3188,7 +3331,11 @@ class DirectoryPageTextProvider:
                         raise CitationVerificationError(
                             f"{source_desc}: expected JSON object in page-map JSONL."
                         )
-                    row_nct = self._validate_payload_firewall(row, source_desc=source_desc)
+                    row_nct = self._validate_payload_firewall(
+                        row,
+                        source_desc=source_desc,
+                        content_sha256=self._peek_declared_sha256(row),
+                    )
                     declared_sha = self._declared_sha256(row, source_desc=source_desc)
                     # A JSONL file is a container: its rows cannot be told apart without
                     # reading them. With referenced documents, a row for a document this
@@ -3205,7 +3352,15 @@ class DirectoryPageTextProvider:
                             f"document ties to a trial may hold any trial's text."
                         )
                     fn = row.get("filename")
-                    names_trial_document = row_nct is not None and isinstance(fn, str) and bool(fn)
+                    # A row is filed under its trial and filename only for a trial of this
+                    # run's scope; a claimant from outside it (D4) is served through the
+                    # row's sha256 alone.
+                    names_trial_document = (
+                        row_nct is not None
+                        and isinstance(fn, str)
+                        and bool(fn)
+                        and (self._in_scope_nct_ids is None or row_nct in self._in_scope_nct_ids)
+                    )
                     # A row is kept under the document it names: its sha256, or its trial and
                     # filename. A row that names neither is no document's text: no request
                     # could find it, and like a row for an unreferenced sha256 it may hold any
@@ -3216,32 +3371,65 @@ class DirectoryPageTextProvider:
                             f"nct_id with a filename); it cannot be any request's text and may "
                             f"hold any trial's."
                         )
-                    parsed_pages = self._parse_page_map_payload(row, source_desc=source_desc)
-                    if parsed_pages is None:
-                        raise CitationVerificationError(
-                            f"{source_desc}: page-map row holds no pages (no 'pages' and no "
-                            f"page-number keys)."
-                        )
                     # The row's text source is the one it declares, else its root's (pdfkit
                     # for pages_dir, ocr for ocr_dir). It is filed under that source only:
                     # another source's text never answers a request (``_source_serves``).
                     bucket = self._effective_text_source(
                         row, default_source_bucket=default_source_bucket, source_desc=source_desc
                     )
-                    entry = _PageMap(
-                        pages=parsed_pages,
-                        declared_nct_id=row_nct,
-                        declared_sha256=declared_sha,
-                        source_desc=source_desc,
-                    )
-                    if declared_sha is not None:
-                        self._store_page_map(self._jsonl_pages, (declared_sha, bucket), entry)
-                    if names_trial_document:
-                        self._store_page_map(
-                            self._jsonl_trial_pages, (row_nct, fn, bucket), entry
+                    # The row's pages are read only once every row of every root has passed
+                    # the firewall (``_store_pending_jsonl_rows``): a later row tagging the
+                    # same document with an audit trial refuses the run before any of the
+                    # document's page text is read (D4).
+                    self._pending_jsonl_rows.append(
+                        (
+                            row,
+                            source_desc,
+                            row_nct,
+                            declared_sha,
+                            fn if names_trial_document else None,
+                            bucket,
                         )
+                    )
         except json.JSONDecodeError as exc:
             raise CitationVerificationError(f"Malformed JSON in {path}: {exc}") from exc
+
+    def _store_pending_jsonl_rows(self) -> None:
+        """Read the pages of the JSONL rows the preflight scan admitted, and file each map.
+
+        Runs after every root has been scanned (``_preflight_scan_all``), so
+        no page text of a JSONL file is read while any row of any root, and
+        every ``<sha256>`` map's firewall, is still unchecked. A row filed under
+        its sha256 is keyed by that document version; one naming an in-scope
+        trial and a filename is also filed under them
+        (``_ingest_jsonl_file``).
+        """
+        pending = self._pending_jsonl_rows
+        self._pending_jsonl_rows = []
+        for row, source_desc, row_nct, declared_sha, trial_filename, bucket in pending:
+            parsed_pages = self._parse_page_map_payload(row, source_desc=source_desc)
+            if parsed_pages is None:
+                raise CitationVerificationError(
+                    f"{source_desc}: page-map row holds no pages (no 'pages' and no "
+                    f"page-number keys)."
+                )
+            entry = _PageMap(
+                pages=parsed_pages,
+                declared_nct_id=row_nct,
+                declared_sha256=declared_sha,
+                source_desc=source_desc,
+            )
+            if declared_sha is not None:
+                self._store_page_map(
+                    self._jsonl_pages,
+                    (declared_sha, bucket),
+                    entry,
+                    shared_document=self._is_shared_document(declared_sha),
+                )
+            if trial_filename is not None and row_nct is not None:
+                self._store_page_map(
+                    self._jsonl_trial_pages, (row_nct, trial_filename, bucket), entry
+                )
 
     def _validate_file_name_layout(self, entry: Path, *, root: Path) -> str | None:
         """Enforce strict directory/filename layout whitelist inside ``root``.
@@ -3397,7 +3585,14 @@ class DirectoryPageTextProvider:
                 if expected_nct is None and self._skip_unreferenced_sha_map(root):
                     return
                 payload = self._read_json_file(root)
-                payload_nct = self._validate_payload_firewall(payload, source_desc=str(root))
+                root_sha: str | None = None
+                if expected_nct is None:
+                    root_sha = (
+                        stem if self._is_sha_stem(stem) else self._peek_declared_sha256(payload)
+                    )
+                payload_nct = self._validate_payload_firewall(
+                    payload, source_desc=str(root), content_sha256=root_sha
+                )
                 if (
                     expected_nct is not None
                     and payload_nct is not None
@@ -3448,7 +3643,14 @@ class DirectoryPageTextProvider:
                 if path_nct is None and self._skip_unreferenced_sha_map(entry):
                     continue
                 payload = self._read_json_file(entry)
-                payload_nct = self._validate_payload_firewall(payload, source_desc=str(entry))
+                # A map named by no trial is named by its sha256 (the layout allows nothing
+                # else there): that sha256 is its content key.
+                entry_sha = (
+                    self._strip_map_extensions(entry.name) if path_nct is None else None
+                )
+                payload_nct = self._validate_payload_firewall(
+                    payload, source_desc=str(entry), content_sha256=entry_sha
+                )
                 if (
                     path_nct is not None
                     and payload_nct is not None
@@ -3488,9 +3690,12 @@ class DirectoryPageTextProvider:
             )
 
     def _preflight_scan_all(self) -> None:
+        """Firewall every root, then read the admitted JSONL rows' pages (``_store_pending_jsonl_rows``)."""
+        self._pending_jsonl_rows = []
         self._scan_root(self._pages_dir, default_source_bucket="pdfkit")
         if self._ocr_dir is not None:
             self._scan_root(self._ocr_dir, default_source_bucket="ocr")
+        self._store_pending_jsonl_rows()
 
     @staticmethod
     def _read_json_file(path: Path) -> Any:
@@ -3686,12 +3891,41 @@ class DirectoryPageTextProvider:
                 return None
         return {number: text for number, text in result.items() if text is not None}
 
-    @staticmethod
-    def _check_map_trial(entry_nct: str | None, nct_id: str, *, source_desc: str) -> None:
-        if entry_nct is not None and entry_nct != nct_id:
-            raise CitationVerificationError(
-                f"Page map {source_desc} declares nct_id={entry_nct!r}, expected {nct_id!r}."
+    def _check_map_trial(
+        self,
+        entry_nct: str | None,
+        nct_id: str,
+        *,
+        source_desc: str,
+        content_sha256: str | None = None,
+    ) -> None:
+        """Serve a map to ``nct_id`` only when the trial it declares agrees, or the map is shared.
+
+        Method (verifier 1.7.0, D4): a map declaring another trial is refused,
+        unless it is keyed by ``content_sha256`` (a ``<sha256>`` map, a JSONL
+        row's sha256, an anonymous root's declared sha256) and this run's
+        in-scope documents tie that sha256 to the requesting trial
+        (``referenced_documents`` holds ``(nct_id, content_sha256)``): the map
+        is then that trial's document's text too, posted by several trials and
+        tagged with one. A tag in the audit set is refused here as well (it was
+        refused at preflight, and a file read again may have changed).
+        """
+        if entry_nct is None or entry_nct == nct_id:
+            return
+        if entry_nct in self._audit_nct_ids:
+            raise AuditHoldoutViolationError(
+                "Audit holdout violation: a page map of the requested document is tagged with an "
+                "audit-holdout trial; it is not read."
             )
+        if (
+            content_sha256 is not None
+            and self._referenced_documents is not None
+            and (nct_id, content_sha256) in self._referenced_documents
+        ):
+            return
+        raise CitationVerificationError(
+            f"Page map {source_desc} declares nct_id={entry_nct!r}, expected {nct_id!r}."
+        )
 
     def _load_doc_pages(
         self,
@@ -3735,7 +3969,10 @@ class DirectoryPageTextProvider:
             sha_entry = self._jsonl_pages.get((sha256, source))
             if sha_entry is not None:
                 self._check_map_trial(
-                    sha_entry.declared_nct_id, nct_id, source_desc=sha_entry.source_desc
+                    sha_entry.declared_nct_id,
+                    nct_id,
+                    source_desc=sha_entry.source_desc,
+                    content_sha256=sha256,
                 )
                 self._cache[cache_key] = (sha_entry.pages, True)
                 return sha_entry.pages, True
@@ -3763,8 +4000,23 @@ class DirectoryPageTextProvider:
             if not self._is_readable_map_file(candidate, base_dir=base_dir):
                 continue
             payload = self._read_json_file(candidate)
-            payload_nct = self._validate_payload_firewall(payload, source_desc=str(candidate))
-            self._check_map_trial(payload_nct, nct_id, source_desc=str(candidate))
+            # A <sha256> map is keyed by the requested sha256; an anonymous single-file root
+            # by the sha256 it declares; a trial-keyed map by no sha256 (D4: only a
+            # content-addressed map is served to another trial that posts the same bytes).
+            candidate_sha: str | None = None
+            if keyed_by == "sha":
+                candidate_sha = sha256
+            elif keyed_by == "file_root":
+                candidate_sha = self._peek_declared_sha256(payload)
+            payload_nct = self._validate_payload_firewall(
+                payload, source_desc=str(candidate), content_sha256=candidate_sha
+            )
+            self._check_map_trial(
+                payload_nct,
+                nct_id,
+                source_desc=str(candidate),
+                content_sha256=candidate_sha if candidate_sha == sha256 else None,
+            )
             declared_sha = self._declared_sha256(payload, source_desc=str(candidate))
             if keyed_by == "file_root" and declared_sha is None:
                 # Checked at preflight too; the file may have changed since. A map that
