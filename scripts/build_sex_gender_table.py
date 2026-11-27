@@ -93,10 +93,15 @@ def rows_from_records(records) -> tuple[list, list]:
     return rows, missing
 
 
-def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, dict]:
+def rows_from_raw(path: str, snapshot_date: str | None,
+                  primary_fields: dict[str, dict] | None = None) -> tuple[list, dict]:
     """(rows, stamps) re-parsed from the retained raw records. stamps carries
     snapshot_date, extracted_at and source_pipeline_commit read from the
     records themselves, plus n_parse_errors.
+
+    When `primary_fields` is given it is filled with each record's
+    sex_primary_measure rebuilt beside its row (sgt.primary_measure_field_from_raw),
+    by NCT id, for --write-back.
 
     A record the parser cannot read (undecodable line, or a parser exception)
     becomes a parse_error row carrying the record's NCT id and enrollment; it
@@ -127,12 +132,15 @@ def rows_from_raw(path: str, snapshot_date: str | None) -> tuple[list, dict]:
                                      f"(record {raw.get('nct_id')}); refusing to tabulate records from more than one extraction")
             snap = snapshot_date or raw.get("snapshot_date") or sgt.today_utc()
             try:
-                rows.append(sgt.ordered(sgt.build_row_from_raw(raw, snap)))
+                row = sgt.build_row_from_raw(raw, snap)
             except Exception as e:  # noqa: BLE001 - parse_error is the state for exactly this
                 print(f"::warning::{raw.get('nct_id')}: parser failed on the retained record "
                       f"({type(e).__name__}: {e}); filed as parse_error")
-                rows.append(sgt.ordered(sgt.parse_error_row(raw.get("nct_id"), raw.get("enrollment"), snap)))
+                row = sgt.parse_error_row(raw.get("nct_id"), raw.get("enrollment"), snap)
                 stamps["n_parse_errors"] += 1
+            rows.append(sgt.ordered(row))
+            if primary_fields is not None and raw.get("nct_id"):
+                primary_fields[raw["nct_id"]] = sgt.primary_measure_field_from_raw(raw, row)
     return rows, stamps
 
 
@@ -193,8 +201,13 @@ def main() -> int:
     # and they are there, rebuild from them rather than from the lean rows.
     if not a.from_raw and not explicit_records and os.path.exists(DEFAULT_RAW_PATH):
         a.from_raw = DEFAULT_RAW_PATH
+    # The weekly record's sex_primary_measure (src/extract_all.py) is read from the same
+    # measures as its sex_gender row, so a re-parse rebuilds it with the row and the
+    # write-back replaces both: a row from a new parser rules version beside a field from
+    # the old one could keep or withhold the wrong composition in DAP.
+    primary_fields: dict[str, dict] = {}
     if a.from_raw:
-        rows, stamps = rows_from_raw(a.from_raw, a.snapshot_date)
+        rows, stamps = rows_from_raw(a.from_raw, a.snapshot_date, primary_fields)
         source = f"re-parsed from {a.from_raw}"
         snapshot_date = a.snapshot_date or stamps["snapshot_date"]
         extracted_at, source_commit = stamps["extracted_at"], stamps["source_pipeline_commit"]
@@ -261,12 +274,18 @@ def main() -> int:
     write_table(rows, a.out)
     if a.write_back:
         if coverage_ok:
-            hit = 0
+            hit = regenerated = 0
             for s in container["data"]:
                 s["sex_gender"] = by_nct[s["nct_id"]]
                 hit += 1
+                # Only a record that carries the field gets it: one from before the field keeps
+                # neither of the pair DAP requires together (baseline_participants beside it).
+                if "sex_primary_measure" in s and s["nct_id"] in primary_fields:
+                    s["sex_primary_measure"] = primary_fields[s["nct_id"]]
+                    regenerated += 1
             replace_json(a.write_back, container)
             written_back["updated"] = hit
+            written_back["sex_primary_measure_regenerated"] = regenerated
             print(f"wrote back lean sex_gender rows into {a.write_back}: {hit} of {len(container['data'])} records")
         else:
             print(f"::error::write-back coverage is not one-to-one: {no_id} rows without id, {len(dupes)} duplicate ids, "

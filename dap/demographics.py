@@ -150,57 +150,6 @@ def _is_weekly_record(record: dict[str, Any]) -> bool:
     return "protocolSection" not in record and "resultsSection" not in record
 
 
-def _reads_as_baseline_count(value: Any) -> bool:
-    """Whether ``src.utils.get_total_baseline_participants`` reads ``value`` as a count:
-    ``int(float(str(value).replace(",", "")))`` succeeds and the value is not None."""
-    if value is None:
-        return False
-    try:
-        int(float(str(value).replace(",", "")))
-    except (ValueError, TypeError, OverflowError):
-        return False
-    return True
-
-
-def _study_without_protocol_enrollment_padding(study: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow view of a raw CT.gov study that prevents protocol enrollment
-    from padding baseline ``unknown_not_reported`` when ``baselineCharacteristicsModule``
-    posts no ``Participants`` denominator of its own.
-
-    Analytical assumption: Denominator A is the baseline table's own participant
-    population (from ``baselineCharacteristicsModule.denoms`` or the table's rows),
-    never registered protocol ``enrollmentInfo.count`` (which can exceed the
-    analyzed baseline cohort due to screen/randomization drop-off).
-
-    Enrollment is kept only when ``src.utils.get_total_baseline_participants`` is sure to return a
-    baseline count before its enrollment fallback: some ``Participants`` denominator whose last count
-    parses (it reads the overall group's count, else the last one, denominator by denominator). A
-    denominator present with counts that do not parse (``"NA"``) had been taken as usable, so the
-    race and ethnicity tables were balanced to registered enrollment.
-    """
-    baseline = (study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
-    has_baseline_participants_denom = any(
-        isinstance(d, dict)
-        and str(d.get("units") or "").lower() == "participants"
-        and isinstance(d.get("counts"), list)
-        and bool(d["counts"])
-        and isinstance(d["counts"][-1], dict)
-        and _reads_as_baseline_count(d["counts"][-1].get("value"))
-        for d in (baseline.get("denoms") or [])
-    )
-    if has_baseline_participants_denom:
-        return study
-    protocol = study.get("protocolSection")
-    if not isinstance(protocol, dict):
-        return study
-    design = protocol.get("designModule")
-    if not isinstance(design, dict) or "enrollmentInfo" not in design:
-        return study
-    trimmed_design = {k: v for k, v in design.items() if k != "enrollmentInfo"}
-    trimmed_protocol = {**protocol, "designModule": trimmed_design}
-    return {**study, "protocolSection": trimmed_protocol}
-
-
 def evaluate_unknown_bounds(
     count: int,
     unknown_count: int,
@@ -359,11 +308,17 @@ def _sex_participant_total(record: dict[str, Any], sex_gender: dict[str, Any]) -
     """Participant count from the sex table when available, for double-count detection.
 
     A table whose counts are not whole (`composition_withheld_reason`) gives no participant total, so it
-    falls back to the legacy block as a non-participant table does.
+    falls back to the legacy block as a non-participant table does. A composition withheld because its
+    counts are not the trial's (`_withhold_sex_composition`, on a weekly record only for the first of
+    several classes) gives none either, and the legacy block does not stand in for it: a raw record has
+    none, and its race and ethnicity tables are then bounded by the baseline table's own denominator alone,
+    which a weekly record carries too (`baseline_participants`). So both paths judge such a table against
+    the same number and name the same reason.
     """
-    if sex_gender.get("is_participant_count") is True and sex_gender.get(
-        "composition_withheld_reason"
-    ) is None and sex_gender.get("sex_report_status") in (
+    withheld = sex_gender.get("composition_withheld_reason")
+    if sex_gender.get("is_participant_count") is True and withheld is None and sex_gender.get(
+        "sex_report_status"
+    ) in (
         "reported",
         "explicit_unknown_only",
     ):
@@ -373,7 +328,11 @@ def _sex_participant_total(record: dict[str, Any], sex_gender: dict[str, Any]) -
         )
         if total > 0:
             return int(round(total))
-    legacy_sex = record.get("sex") if _is_weekly_record(record) else None
+    legacy_sex = (
+        record.get("sex")
+        if _is_weekly_record(record) and withheld in (None, "participant_counts_not_whole")
+        else None
+    )
     if isinstance(legacy_sex, dict) and legacy_sex.get("reported") and isinstance(legacy_sex.get("totals"), dict):
         legacy_total = sum(
             int(v) for v in legacy_sex["totals"].values() if isinstance(v, (int, float))
@@ -1040,37 +999,75 @@ def _reads_as_number(value: Any) -> bool:
 
 
 def _primary_sex_measure(record: dict[str, Any]) -> tuple[dict[str, Any], Any] | None:
-    """The measure the vendored parser takes Female and Male from, with that measure parsed alone.
+    """The measure the vendored parser takes Female and Male from, with that measure parsed alone
+    (`sgt.primary_measure`: the first selected measure whose own title, Female and Male are the row's).
 
-    With several sex/gender measures the parser takes Female and Male from one primary measure (the
-    largest Female + Male, the first on ties) but Unknown, gender-diverse and ambiguous as maxima across
-    the measures, and a flag such as `flag_multiclass_timepoint` from any of them (`sgp.parse_trial`). A
-    check on the primary measure's layout or total therefore reads that measure alone (`sgp.parse_measure`):
-    it is the first selected measure whose own title, Female and Male are the row's.
+    With several sex/gender measures the parser takes Female and Male from one primary measure but
+    Unknown, gender-diverse and ambiguous as maxima across the measures, and a flag such as
+    `flag_multiclass_timepoint` from any of them (`sgp.parse_trial`), so a check on the primary measure's
+    layout or total reads that measure alone. The weekly producer identifies it with the same function
+    (`sgt.primary_measure_field`). None for a record without measures or when the parser fails.
     """
     module = (record.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
     measures = module.get("measures") if isinstance(module, dict) else None
-    if not isinstance(measures, list):
-        return None
     try:
-        parsed = sgp.parse_trial(measures, None)
-        for measure in sgp.select_sex_gender_measures(measures):
-            alone = sgp.parse_measure(measure)
-            if (alone.title, alone.female, alone.male) == (parsed.measure_title, parsed.n_female, parsed.n_male):
-                return measure, alone
+        return sgt.primary_measure(measures)
     except Exception:  # noqa: BLE001 - extract_sex_gender already read the same failure
         return None
-    return None
 
 
-def _measure_counts_miss_denominator(alone: Any, baseline_participants: int | None) -> bool:
-    """Whether one parsed sex/gender measure's counts fail to add up to the table's Participants denominator.
+def _weekly_baseline_fields(record: dict[str, Any]) -> tuple[int | None, tuple[bool, float] | None] | None:
+    """A weekly record's baseline table count and its primary sex measure's reading, as the producer
+    recorded them: (`baseline_participants.count`, (`flag_multiclass_timepoint`, `n_total_parsed`) or None),
+    or None for a record that predates them.
 
-    Only the primary measure's own counts are added: an Unknown taken from another measure could otherwise
-    make an arm's or a subgroup's counts add up to the table (Female 60 and Male 30 of a subgroup, Unknown 10
-    from a gender measure, against 100).
+    `src/extract_all.py` writes both fields on every record (`src.utils.baseline_participants_field`,
+    `sgt.primary_measure_field`) from the study as posted, with the functions this module's raw path calls.
+    A record without both is one extracted before they existed: it is read as before, with no baseline count
+    and no class check, which is the documented weekly behaviour, not a count of 0. A count of None is
+    the table posting no Participants count (its `absent_reason` says why), and is read as the raw path reads
+    one. The build refuses a record carrying only one of the fields, or a malformed one
+    (`benchmarks._weekly_baseline_fields_problem`); a reading that is absent (`absent_reason`) is None here.
     """
-    counted = sum(float(getattr(alone, k) or 0.0) for k in ("female", "male", "unknown", "gender_diverse", "ambiguous"))
+    table, primary = record.get("baseline_participants"), record.get("sex_primary_measure")
+    if not (isinstance(table, dict) and isinstance(primary, dict)):
+        return None
+    count = table.get("count")
+    count = count if isinstance(count, int) and not isinstance(count, bool) else None
+    flag, total = primary.get("flag_multiclass_timepoint"), primary.get("n_total_parsed")
+    reading = (
+        (flag, float(total))
+        if isinstance(flag, bool) and isinstance(total, (int, float)) and not isinstance(total, bool)
+        else None
+    )
+    return count, reading
+
+
+def _primary_sex_measure_reading(record: dict[str, Any]) -> tuple[bool, float] | None:
+    """The primary sex measure's own `flag_multiclass_timepoint` and counted total (`sgt.measure_counted_total`),
+    or None when no primary measure is read.
+
+    A raw record's measure is parsed here (`_primary_sex_measure`); a weekly record keeps no measures, and its
+    reading is the one the producer made with the same functions (`_weekly_baseline_fields`), so both paths
+    apply one rule to the same two numbers.
+    """
+    if _is_weekly_record(record):
+        fields = _weekly_baseline_fields(record)
+        return fields[1] if fields is not None else None
+    primary = _primary_sex_measure(record)
+    if primary is None:
+        return None
+    return bool(primary[1].flag_multiclass_timepoint), sgt.measure_counted_total(primary[1])
+
+
+def _counts_miss_denominator(counted: float, baseline_participants: int | None) -> bool:
+    """Whether one sex/gender measure's counted total fails to add up to the table's Participants denominator.
+
+    `counted` is the primary measure's own total (`sgt.measure_counted_total`), not the row's: an Unknown
+    taken from another measure could otherwise make an arm's or a subgroup's counts add up to the table
+    (Female 60 and Male 30 of a subgroup, Unknown 10 from a gender measure, against 100). A table with no
+    Participants count (None) has nothing the counts could make up, so they miss it.
+    """
     return baseline_participants is None or round(counted) != baseline_participants
 
 
@@ -1153,7 +1150,9 @@ def _whole_population_sex_problem(
         if len(whole_values) == 1 and whole_values[0] is not None:
             taken = sgp.choose_total(rows)["total"]
             differs = differs or taken is None or abs(taken - whole_values[0]) > 1e-6
-    if not (missing or differs or pooled) or not _measure_counts_miss_denominator(alone, baseline_participants):
+    if not (missing or differs or pooled) or not _counts_miss_denominator(
+        sgt.measure_counted_total(alone), baseline_participants
+    ):
         return None
     if missing:
         return "whole_population_sex_counts_missing"
@@ -1177,15 +1176,22 @@ def _sex_counts_from_one_class_of_several(
     and the class that adds up to the denominator can be a population pooled with another trial
     (NCT02163759: its own 358 first, then "GA28948 & GA28949 Pooled Population", 716). Of the 3,096
     stored raw trials with a baseline measure, 22 have such a measure and 14 are withheld. The flag and
-    the counts are the primary measure's own (`_primary_sex_measure`), not the row's, which can carry
+    the counts are the primary measure's own (`_primary_sex_measure_reading`), not the row's, which can carry
     another measure's flag or Unknown. The parser is not changed.
+
+    A weekly record is judged by the same rule on the same two numbers and the same denominator, as the
+    producer recorded them (`sex_primary_measure`, `baseline_participants`), so this check gives the same
+    answer on a trial's weekly and raw records. On the raw path the whole-population group checks come first
+    (`extract_demographics`); they need the baseline groups, which a weekly record does not keep. A weekly
+    record extracted before those fields existed has no reading, and its first class's composition is kept,
+    as before (dap/README.md).
     """
     if sex_gender.get("is_participant_count") is not True:
         return False
-    primary = _primary_sex_measure(record)
-    if primary is None or primary[1].flag_multiclass_timepoint is not True:
+    primary = _primary_sex_measure_reading(record)
+    if primary is None or primary[0] is not True:
         return False
-    return _measure_counts_miss_denominator(primary[1], baseline_participants)
+    return _counts_miss_denominator(primary[1], baseline_participants)
 
 
 def _sex_measure_analyzed_below_table(record: dict[str, Any], baseline_participants: int | None) -> bool:
@@ -1268,17 +1274,21 @@ def extract_demographics(
     """Extract structured race, ethnicity, sex/gender, and US-site omission audit for one trial."""
     geo = geography if geography is not None else extract_geography(record)
     posted = is_results_posted(record)
+    weekly = _is_weekly_record(record)
     # The baseline table's own Participants count, read as the extractors balance against it, without
-    # the registered-enrollment fallback. Weekly records carry no baseline table, so for them it is None
-    # and only the sex total bounds a race or ethnicity table.
-    baseline_participants = (
-        src_utils.get_total_baseline_participants(
-            _study_without_protocol_enrollment_padding(record), src_utils.get_overall_group_id(record)
-        )
-        if posted and "resultsSection" in record
-        else None
-    )
+    # the registered-enrollment fallback (`src.utils.baseline_participants`). A weekly record keeps no
+    # baseline table but carries that count as the producer read it (`_weekly_baseline_fields`); one
+    # extracted before it did has none, so only the sex total bounds its race and ethnicity tables.
+    weekly_fields = _weekly_baseline_fields(record) if weekly else None
+    if posted and "resultsSection" in record:
+        baseline_participants = src_utils.baseline_participants(record)
+    elif posted and weekly_fields is not None:
+        baseline_participants = weekly_fields[0]
+    else:
+        baseline_participants = None
     sex_gender = extract_sex_gender(record, snapshot_date=snapshot_date)
+    # The group checks need the baseline groups, which a weekly record does not keep; the class check reads
+    # the primary sex measure, which a weekly record carries (`sex_primary_measure`) from this change on.
     group_problem = whole_population_group_problem(record) if posted and "protocolSection" in record else None
     if group_problem is not None:
         sex_gender = _withhold_sex_composition(sex_gender, group_problem)
@@ -1286,7 +1296,7 @@ def extract_demographics(
         unread := _whole_population_sex_problem(record, sex_gender, baseline_participants)
     ):
         sex_gender = _withhold_sex_composition(sex_gender, unread)
-    elif posted and "protocolSection" in record and _sex_counts_from_one_class_of_several(
+    elif posted and ("protocolSection" in record or weekly) and _sex_counts_from_one_class_of_several(
         record, sex_gender, baseline_participants
     ):
         sex_gender = _withhold_sex_composition(sex_gender, "sex_counts_from_one_class_of_several")
@@ -1294,18 +1304,19 @@ def extract_demographics(
     if sex_total is not None and _sex_measure_analyzed_below_table(record, baseline_participants):
         sex_total = None
 
-    weekly = _is_weekly_record(record)
     if weekly:
         raw_race = record.get("race") if isinstance(record.get("race"), dict) else None
     elif posted:
-        raw_race = race_extractor.extract_race_data(_study_without_protocol_enrollment_padding(record))
+        raw_race = race_extractor.extract_race_data(src_utils.study_without_protocol_enrollment_padding(record))
     else:
         raw_race = None
 
     if weekly:
         raw_eth = record.get("ethnicity") if isinstance(record.get("ethnicity"), dict) else None
     elif posted:
-        raw_eth = ethnicity_extractor.extract_ethnicity_data(_study_without_protocol_enrollment_padding(record))
+        raw_eth = ethnicity_extractor.extract_ethnicity_data(
+            src_utils.study_without_protocol_enrollment_padding(record)
+        )
     else:
         raw_eth = None
 
