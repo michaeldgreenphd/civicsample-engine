@@ -37,6 +37,9 @@ from dap.demographics import extract_demographics  # noqa: E402
 from src import sex_gender_table as sgt  # noqa: E402
 from src.extract_all import extract_demographics_from_study  # noqa: E402
 
+# The fictional holdout index every DAP build now requires (src/holdout_exclusion.py).
+HOLDOUT_ARGS: list[str] = ["--holdout-index", str(ROOT / "tests" / "fixtures" / "holdout_index" / "index.json")]
+
 MULTICLASS = "sex_counts_from_one_class_of_several"
 WITHHELD = ("percent_female", "female_share", "of_parsed_total", "of_classified")
 NEW_FIELDS = ("baseline_participants", "sex_primary_measure")
@@ -239,7 +242,7 @@ def test_a_weekly_build_counts_and_checks_a_first_class_composition(tmp_path: Pa
     assert cli_build.main([
         "--demographics", str(weekly_path), "--snapshot-date", "2026-11-27",
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
-        "--generated-at", "2026-11-27T00:00:00+00:00", "--out", str(out),
+        "--generated-at", "2026-11-27T00:00:00+00:00", "--out", str(out), *HOLDOUT_ARGS,
     ]) == 0
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []

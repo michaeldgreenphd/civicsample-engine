@@ -18,6 +18,14 @@ Optional flags:
                            --records-dir, and for --responses-cache when any line lacks fetched_at
                            (registry post dates are never used in its place)
 
+Required:
+  --holdout-index PATH     the site's outcomes index (clinical-trial-populations data/outcomes/index.json).
+                           A trial whose in_audit is true there is an audit holdout and is excluded: it is
+                           dropped from --nct-list, --exclude-list and the input's frame before anything is
+                           fetched or read, its records and history lines are dropped by id before any
+                           per-trial parse, and run.json holdout_exclusion records how many were removed
+                           (src/holdout_exclusion.py). There is no default.
+
 Runs comparability_build.check() before writing anything; stages atomically so a failed run never
 corrupts or partially overwrites an existing output directory.
 """
@@ -37,6 +45,7 @@ if str(ROOT) not in sys.path:
 
 from outcomes import comparability_build as B  # noqa: E402
 from outcomes import outcome_history as OH  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 PRODUCER_PATHS = (
     'outcomes/comparability.py',
@@ -45,6 +54,9 @@ PRODUCER_PATHS = (
     'outcomes/COMPARABILITY.md',
     'outcomes/acquire.py',
     'scripts/build_outcomes_comparability.py',
+    # The holdout exclusion decides which trials are built (and the guard supplies its id check).
+    'src/holdout_exclusion.py',
+    'src/holdout_guard.py',
 )
 
 
@@ -91,6 +103,13 @@ def producer(root: Path = ROOT) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Build the comparability artifact family; in_audit holdouts are excluded from every universe.
+
+    Drop, never refuse, for every entry point that names trials (`--nct-list`, `--exclude-list`, the
+    archive's or cache's frame, a records directory): a holdout id is removed and counted, so the
+    stamp reports how many left the universe; a universe left empty is refused. The holdout index is
+    read before anything else, the history archive included.
+    """
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument('--fetch', action='store_true', help='fetch full CT.gov API v2 records for --nct-list')
@@ -107,6 +126,10 @@ def main(argv: list[str] | None = None) -> int:
         help='YYYY-MM-DD retrieval date; required for --records-dir, and for --responses-cache lines without fetched_at',
     )
     ap.add_argument('--out', type=Path, default=ROOT / 'build' / 'outcomes_comparability')
+    ap.add_argument(
+        '--holdout-index', type=Path, required=True,
+        help="the site's outcomes index (data/outcomes/index.json); in_audit trials are excluded. Required",
+    )
     args = ap.parse_args(argv)
 
     if (args.exclude_list is None) != (args.exclude_reason is None):
@@ -117,17 +140,30 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f'--snapshot-date {args.snapshot_date!r} is not a real YYYY-MM-DD calendar date')
 
     try:
+        exclusion = HX.HoldoutExclusion(HX.load_holdout_index(args.holdout_index))
+    except HX.HoldoutIndexError as exc:
+        print(f'refused: {exc}', file=sys.stderr)
+        return 1
+    archive_dropped = [0]  # archive lines dropped as holdouts (`B.iter_archive`)
+
+    def listed(path: Path) -> list[str]:
+        """An NCT list without its holdouts, which are counted as removed from the universe."""
+        return exclusion.exclude_ids(B.read_nct_list(path))
+
+    try:
         # Validate optional historical archive upfront before making any network calls.
         history_snapshots: dict[str, dict[str, Any]] | None = None
         history_meta: dict[str, Any] | None = None
         if args.history_archive is not None:
-            history_snapshots, history_meta = OH.load_history_archive(args.history_archive)
+            history_snapshots, history_meta = OH.load_history_archive(args.history_archive, exclusion)
 
         studies_iter: Any
         if args.fetch:
             if not args.nct_list:
                 ap.error('--fetch requires --nct-list')
-            requested = B.read_nct_list(args.nct_list)
+            requested = listed(args.nct_list)
+            if not requested and exclusion.n_excluded:
+                raise B.BuildError(f'{args.nct_list.name} lists only in_audit holdout trials, which are excluded')
             if not requested:
                 raise B.BuildError(f'{args.nct_list.name} lists no NCT ids; nothing to fetch')
             lines, rec = B.fetch(requested)
@@ -142,36 +178,47 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 meta = B.write_archive(lines, cache_path, rec, requested)
             del lines
-            studies_iter = B.iter_archive(cache_path)
-            frame_ids = list(meta.get('requested_ids') or requested)
+            studies_iter = B.iter_archive(cache_path, exclusion)
+            frame_ids = exclusion.exclude_ids(meta.get('requested_ids') or requested)
             source_label = 'fetch'
         elif args.archive is not None:
             meta = B.read_archive_meta(args.archive)
-            frame_ids = list(meta.get('requested_ids') or [])
-            requested = B.read_nct_list(args.nct_list) if args.nct_list else frame_ids
+            # An archive acquired before the exclusion may list and hold holdouts: they leave its frame
+            # here (counted) and its lines are dropped by id as they are read (`B.iter_archive`).
+            frame_ids = exclusion.exclude_ids(meta.get('requested_ids') or [])
+            requested = listed(args.nct_list) if args.nct_list else frame_ids
+            if not requested and exclusion.n_excluded:
+                raise B.BuildError('every requested trial is an in_audit holdout trial, which is excluded')
             if not requested:
                 raise B.BuildError('archive metadata lists no requested ids; supply --nct-list')
-            studies_iter = B.iter_archive(args.archive)
+            studies_iter = B.iter_archive(args.archive, exclusion, archive_dropped)
             source_label = 'archive'
         elif args.records_dir is not None:
-            loaded_studies, meta = B.load_records_dir(args.records_dir, snapshot_date=args.snapshot_date)
+            loaded_studies, meta = B.load_records_dir(
+                args.records_dir, snapshot_date=args.snapshot_date, exclusion=exclusion
+            )
             frame_ids = list(meta['requested_ids'])
-            requested = B.read_nct_list(args.nct_list) if args.nct_list else frame_ids
+            requested = listed(args.nct_list) if args.nct_list else frame_ids
             if not requested:
-                raise B.BuildError('--nct-list is empty')
+                raise B.BuildError('--nct-list is empty (or lists only in_audit holdout trials)')
             studies_iter = loaded_studies
             source_label = 'records_dir'
         else:
-            loaded_studies, meta = B.load_responses_cache(args.responses_cache, snapshot_date=args.snapshot_date)
+            loaded_studies, meta = B.load_responses_cache(
+                args.responses_cache, snapshot_date=args.snapshot_date, exclusion=exclusion
+            )
             frame_ids = list(meta['requested_ids'])
-            requested = B.read_nct_list(args.nct_list) if args.nct_list else frame_ids
+            requested = listed(args.nct_list) if args.nct_list else frame_ids
             if not requested:
-                raise B.BuildError('--nct-list is empty')
+                raise B.BuildError('--nct-list is empty (or lists only in_audit holdout trials)')
             studies_iter = loaded_studies
             source_label = 'responses_cache'
 
-        not_retrieved = {x['nct_id']: x['reason'] for x in meta.get('not_retrieved') or []}
-        excluded = B.read_nct_list(args.exclude_list) if args.exclude_list else None
+        # A frame or not_retrieved list written before the exclusion may still name a holdout.
+        not_retrieved = {
+            x['nct_id']: x['reason'] for x in meta.get('not_retrieved') or [] if not exclusion.is_holdout(x['nct_id'])
+        }
+        excluded = listed(args.exclude_list) if args.exclude_list else None
         scope = B.build_scope(frame_ids, requested, excluded, args.exclude_reason)
         records, problems = B.build_records(
             studies_iter,
@@ -180,6 +227,17 @@ def main(argv: list[str] | None = None) -> int:
             history_snapshots=history_snapshots,
             excluded=frozenset(excluded or ()),
         )
+        if source_label == 'archive':
+            # The archive's own metadata described the frame as frozen; what is published describes
+            # the frame built: the holdouts' ids and lines are left out of its lists and counts (the
+            # hashes still identify the archive file as given).
+            meta = {
+                **meta,
+                'requested_ids': frame_ids,
+                'n_requested': len(frame_ids),
+                'not_retrieved': [{'nct_id': n, 'reason': r} for n, r in sorted(not_retrieved.items())],
+                'n_records': meta['n_records'] - archive_dropped[0],
+            }
         parameters: dict[str, Any] = {
             'source': source_label,
             'nct_list': args.nct_list.name if args.nct_list else None,
@@ -200,8 +258,9 @@ def main(argv: list[str] | None = None) -> int:
             parameters,
             scope,
             history_archive_meta=history_meta,
+            holdout_exclusion=exclusion.stamp(),
         )
-    except (B.BuildError, OH.HistoryArchiveError) as exc:
+    except (B.BuildError, OH.HistoryArchiveError, HX.HoldoutIndexError) as exc:
         print(f'refused: {exc}', file=sys.stderr)
         return 1
 
@@ -227,6 +286,8 @@ def main(argv: list[str] | None = None) -> int:
     den = files['summary.json']['denominators']
     sc = files['run.json']['scope']
     print(f"scope: frame {sc['frame']['n']}, included {sc['included']['n']}, excluded {sc['excluded']['n']}")
+    print(f"holdouts: {exclusion.n_excluded} in_audit holdout trial(s) excluded "
+          f"({exclusion.index.n_holdouts} in the index)")
     print(
         f"{files['run.json']['run_id']}: {den['requested_trials']['n']} requested, "
         f"{den['retrieved_trials']['n']} retrieved, {den['posted_results_trials']['n']} posted results, "

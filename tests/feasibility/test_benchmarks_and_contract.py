@@ -18,9 +18,23 @@ from scripts import (
     check_feasibility_contract,
     export_feasibility_site,
 )
+from src import holdout_exclusion as HX
 from tests.feasibility.conftest import make_ctgov_study, make_weekly_record
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# The fictional holdout index every CLI call is given (tests/fixtures/holdout_index/index.json). Its
+# holdouts (NCT99777701, NCT99777702) are in no feasibility fixture, so the exclusion removes nothing
+# and every existing expectation holds; test_feasibility_holdouts.py adds a holdout.
+HOLDOUT_INDEX = ROOT / "tests" / "fixtures" / "holdout_index" / "index.json"
+HOLDOUT_ARGS = ["--holdout-index", str(HOLDOUT_INDEX)]
+
+
+def _no_holdout_stamp(nct_ids: list[str]) -> dict[str, Any]:
+    """The stamp of an exclusion under the fixture index applied to `nct_ids` (it removes none of them)."""
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))
+    assert exclusion.exclude_ids(nct_ids) == nct_ids
+    return exclusion.stamp()
 
 
 def _sample_cohort() -> list[dict[str, Any]]:
@@ -184,6 +198,7 @@ def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(out_a),
+            *HOLDOUT_ARGS,
         ]
     )
     rc_b = build_feasibility_benchmarks.main(
@@ -194,6 +209,7 @@ def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
             "2026-11-21T18:30:00+00:00",
             "--out",
             str(out_b),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc_a == 0
@@ -220,6 +236,7 @@ def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
                 "2026-11-21T12:00:00+00:00",
                 "--out",
                 str(out_c),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -240,8 +257,8 @@ def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
 
     # Site export succeeds on valid build, stages atomically, and allows clean re-export over itself.
     site_out = tmp_path / "site_feasibility"
-    assert export_feasibility_site.main([str(out_a), str(site_out)]) == 0
-    assert export_feasibility_site.main([str(out_b), str(site_out)]) == 0
+    assert export_feasibility_site.main([str(out_a), str(site_out), *HOLDOUT_ARGS]) == 0
+    assert export_feasibility_site.main([str(out_b), str(site_out), *HOLDOUT_ARGS]) == 0
     site_run = json.loads((site_out / "run.json").read_text(encoding="utf-8"))
     assert site_run["build_run_id"] == run_a["run_id"]
     for name, expected_sha in site_run["files"].items():
@@ -251,7 +268,7 @@ def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
     unrelated = tmp_path / "unrelated_dir"
     unrelated.mkdir()
     (unrelated / "important.json").write_text("{}", encoding="utf-8")
-    assert export_feasibility_site.main([str(out_a), str(unrelated)]) == 1
+    assert export_feasibility_site.main([str(out_a), str(unrelated), *HOLDOUT_ARGS]) == 1
     assert (unrelated / "important.json").exists()
 
     # Tampering with summary.json causes BOTH check_feasibility_contract.py AND export_feasibility_site.py to fail!
@@ -266,7 +283,7 @@ def test_build_contract_tamper_refusals_and_site_export(tmp_path: Path) -> None:
     (tampered / "summary.json").write_bytes(artifacts.dump_canonical(bad_sum))
 
     assert check_feasibility_contract.main([str(tampered)]) == 1
-    assert export_feasibility_site.main([str(tampered), str(tmp_path / "site_bad")]) == 1
+    assert export_feasibility_site.main([str(tampered), str(tmp_path / "site_bad"), *HOLDOUT_ARGS]) == 1
     assert not (tmp_path / "site_bad").exists()
 
 
@@ -274,7 +291,7 @@ def test_refuses_site_projected_demographics_parts(tmp_path: Path) -> None:
     fake_part = tmp_path / "demographics.part001.json.gz"
     fake_part.write_bytes(gzip.compress(b'{"data": []}', mtime=0))
     rc = build_feasibility_benchmarks.main(
-        ["--demographics", str(fake_part), "--out", str(tmp_path / "out")]
+        ["--demographics", str(fake_part), "--out", str(tmp_path / "out"), *HOLDOUT_ARGS]
     )
     assert rc == 1
     assert not (tmp_path / "out").exists()
@@ -320,12 +337,13 @@ def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
                 "2026-11-22T12:00:00+00:00",
                 "--out",
                 str(out_dir),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
     )
     assert check_feasibility_contract.main([str(out_dir)]) == 0
-    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0
+    assert export_feasibility_site.main([str(out_dir), str(site_dir), *HOLDOUT_ARGS]) == 0
 
     decoded_trials = artifacts.decode_trials_jsonl_gz((out_dir / "trials.jsonl.gz").read_bytes())
     assert len(decoded_trials) == 1
@@ -391,6 +409,7 @@ def test_contract_checker_catches_domain_invariant_violations() -> None:
         inputs_meta=inputs_meta,
         producer_meta=producer_meta,
         generated_at="2026-11-21T12:00:00+00:00",
+        holdout_exclusion=_no_holdout_stamp([t["nct_id"] for t in trials]),
     )
     assert artifacts.check_contract(base_family, base_raw) == []
 
@@ -444,6 +463,7 @@ def _fixture_family(
             "source_sha256": "c" * 64,
         },
         generated_at="2026-11-21T12:00:00+00:00",
+        holdout_exclusion=_no_holdout_stamp([t["nct_id"] for t in trials]),
     )
 
 
@@ -612,6 +632,7 @@ def _build_weekly(demog_path: Path, mesh_path: Path, out_dir: Path) -> int:
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(out_dir),
+            *HOLDOUT_ARGS,
         ]
     )
 
@@ -933,7 +954,7 @@ def test_condition_mesh_sidecar_must_cover_every_cohort_trial(
 
     mesh_one = tmp_path / "mesh_one.jsonl.gz"
     mesh_one.write_bytes(_mesh_lines(("NCT99700001",)))
-    archive_args = ["--archive", str(archive_path), "--generated-at", "2026-11-21T12:00:00+00:00"]
+    archive_args = ["--archive", str(archive_path), "--generated-at", "2026-11-21T12:00:00+00:00", *HOLDOUT_ARGS]
     out_partial = tmp_path / "partial_archive"
     assert (
         build_feasibility_benchmarks.main(
@@ -1058,7 +1079,7 @@ def test_site_export_keeps_the_source_pipeline_commit(tmp_path: Path) -> None:
     out_dir = tmp_path / "weekly_build"
     site_dir = tmp_path / "weekly_site"
     assert _build_weekly(demog_path, mesh_path, out_dir) == 0
-    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0
+    assert export_feasibility_site.main([str(out_dir), str(site_dir), *HOLDOUT_ARGS]) == 0
     site_run = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))
     records = site_run["inputs"]["records"]
     assert records["source_pipeline_commit"] == _WEEKLY_COMMIT
@@ -1072,7 +1093,7 @@ def test_site_export_names_the_termination_review_file_by_digest(tmp_path: Path)
     out_dir = tmp_path / "weekly_build"
     site_dir = tmp_path / "weekly_site"
     assert _build_weekly(demog_path, mesh_path, out_dir) == 0
-    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0
+    assert export_feasibility_site.main([str(out_dir), str(site_dir), *HOLDOUT_ARGS]) == 0
     build_reviews = json.loads((out_dir / "run.json").read_text(encoding="utf-8"))["inputs"]["termination_reviews"]
     site_inputs = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))["inputs"]
     assert site_inputs["termination_reviews_sha256"] == build_reviews["sha256"]
@@ -1212,7 +1233,7 @@ def test_archive_refuses_failed_or_short_response_envelopes(
     with pytest.raises(ValueError, match=match):
         _load_archive(path)
     out = tmp_path / "out"
-    assert build_feasibility_benchmarks.main(["--archive", str(path), "--out", str(out)]) == 1
+    assert build_feasibility_benchmarks.main(["--archive", str(path), "--out", str(out), *HOLDOUT_ARGS]) == 1
     assert not out.exists()
 
 
@@ -1811,7 +1832,7 @@ def test_site_export_requires_readable_git_provenance(
     out_dir, site_dir = tmp_path / "build", tmp_path / "site"
     assert _build_weekly(demog_path, mesh_path, out_dir) == 0
     assert check_feasibility_contract.main([str(out_dir)]) == 0
-    assert (export_feasibility_site.main([str(out_dir), str(site_dir)]) == 0) is exported
+    assert (export_feasibility_site.main([str(out_dir), str(site_dir), *HOLDOUT_ARGS]) == 0) is exported
     assert site_dir.exists() is exported
 
 
@@ -1837,7 +1858,7 @@ def test_weekly_build_without_sidecar_still_needs_run_stamps(
     demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
     out_dir = tmp_path / "refused"
     rc = build_feasibility_benchmarks.main(
-        ["--demographics", str(demog_path), "--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out_dir)]
+        ["--demographics", str(demog_path), "--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out_dir), *HOLDOUT_ARGS]
     )
     assert rc == 1
     assert f"carry no {stamp}" in capsys.readouterr().err
@@ -1870,7 +1891,7 @@ def test_weekly_build_refuses_malformed_run_stamps(
     demog_path.write_bytes(gzip.compress(json.dumps(body).encode("utf-8"), mtime=0))
     out_dir = tmp_path / "refused"
     rc = build_feasibility_benchmarks.main(
-        ["--demographics", str(demog_path), "--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out_dir)]
+        ["--demographics", str(demog_path), "--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out_dir), *HOLDOUT_ARGS]
     )
     assert rc == 1
     err = capsys.readouterr().err
@@ -1896,7 +1917,7 @@ def test_contract_and_export_refuse_edited_weekly_source_stamps(tmp_path: Path) 
     run["inputs"]["records"]["source_pipeline_commit"] = "garbage"
     run_path.write_text(json.dumps(run), encoding="utf-8")
     site_dir = tmp_path / "site"
-    assert export_feasibility_site.main([str(out_dir), str(site_dir)]) == 1
+    assert export_feasibility_site.main([str(out_dir), str(site_dir), *HOLDOUT_ARGS]) == 1
     assert not (site_dir / "run.json").exists()
 
 
@@ -1996,7 +2017,7 @@ def test_contract_cli_and_export_fail_on_a_malformed_cell_on_disk(
     assert "FAIL:" in out
 
     site = tmp_path / "site"
-    assert export_feasibility_site.main([str(build), str(site)]) == 1
+    assert export_feasibility_site.main([str(build), str(site), *HOLDOUT_ARGS]) == 1
     assert "build failed contract verification" in capsys.readouterr().err
     assert not site.exists()
 
@@ -2021,7 +2042,7 @@ def test_contract_cli_and_export_report_an_unanticipated_exception(
     )
 
     site = tmp_path / "site"
-    assert export_feasibility_site.main([str(build), str(site)]) == 1
+    assert export_feasibility_site.main([str(build), str(site), *HOLDOUT_ARGS]) == 1
     assert "contract check could not complete (RuntimeError: unanticipated shape)" in capsys.readouterr().err
     assert not site.exists()
 
@@ -2054,7 +2075,9 @@ def test_an_unreadable_gzip_input_is_refused_not_raised(
         demog.write_bytes(data)
         args = ["--demographics", str(demog)]
     out = tmp_path / "out"
-    rc = build_feasibility_benchmarks.main(args + ["--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out)])
+    rc = build_feasibility_benchmarks.main(
+        args + ["--generated-at", "2026-11-21T12:00:00+00:00", "--out", str(out), *HOLDOUT_ARGS]
+    )
     err = capsys.readouterr().err
     assert rc == 1 and "REFUSED:" in err and "not readable gzip data" in err, err
     assert not out.exists()

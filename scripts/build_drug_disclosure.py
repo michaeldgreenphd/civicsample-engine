@@ -3,15 +3,22 @@
 
 Usage:
   # 1a. Live rate-limited (<= 2 req/s per host), resumable acquisition + freeze:
-  python3 scripts/build_drug_disclosure.py acquire --cache build/disclosure_cache --nct-list ids.txt
+  python3 scripts/build_drug_disclosure.py acquire --cache build/disclosure_cache --nct-list ids.txt \
+      --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 
   # 1b. Or freeze already-downloaded local CT.gov v2 `.json`/`.json.gz`/`.jsonl.gz` records offline,
   #     stating when they were retrieved and the CT.gov data timestamp they reflect (no defaults):
   python3 scripts/build_drug_disclosure.py freeze-local --records /path/to/records --cache build/disclosure_cache \
-      --fetched-at 2026-11-13T22:32:29+00:00 --data-timestamp 2026-11-13T10:00:06
+      --fetched-at 2026-11-13T22:32:29+00:00 --data-timestamp 2026-11-13T10:00:06 --holdout-index INDEX
 
   # 2. Offline deterministic build from frozen sha256-verified cache:
-  python3 scripts/build_drug_disclosure.py build --cache build/disclosure_cache --out build/disclosure
+  python3 scripts/build_drug_disclosure.py build --cache build/disclosure_cache --out build/disclosure \
+      --holdout-index INDEX
+
+Every subcommand requires --holdout-index, the site's outcomes index (data/outcomes/index.json): a trial
+whose in_audit is true there is an audit holdout and is excluded (src/holdout_exclusion.py). It is removed
+from the NCT list or the local records before anything is requested, read or frozen, a cache record of one
+is dropped by its key before the build reads it, and run.json counts how many were removed.
 """
 from __future__ import annotations
 
@@ -31,6 +38,7 @@ if str(ROOT) not in sys.path:
 
 from disclosure import acquire as A  # noqa: E402
 from disclosure import artifacts as ART  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 PRODUCER_SCRIPTS = (
     'scripts/build_drug_disclosure.py',
@@ -191,6 +199,18 @@ DATA_TIMESTAMP_HELP = (
 )
 
 
+HOLDOUT_INDEX_HELP = (
+    "The site's outcomes index (clinical-trial-populations data/outcomes/index.json). Trials whose in_audit "
+    'is true there are audit holdouts and are excluded: never requested, read, counted or published. '
+    'Required; there is no default'
+)
+
+
+def _load_holdout_exclusion(path: Path) -> HX.HoldoutExclusion:
+    """A fresh exclusion over the holdouts of the index at `path` (HoldoutIndexError when it is unreadable)."""
+    return HX.HoldoutExclusion(HX.load_holdout_index(path))
+
+
 def _resolve_nct_ids(nct_list: Path | None, nct_ids: list[str] | None) -> list[str]:
     collected: list[str] = []
     if nct_list is not None:
@@ -207,12 +227,36 @@ def _resolve_nct_ids(nct_list: Path | None, nct_ids: list[str] | None) -> list[s
 
 
 def cmd_acquire(args: argparse.Namespace) -> int:
+    """Acquire and freeze the cross-source responses for the NCT list, holdouts excluded first.
+
+    The universe is `--nct-list` and every `--nct-id`. An in_audit holdout among them is dropped and
+    counted (the same rule for a listed and a named ID: both are the universe), before any request
+    is made, so no CT.gov, PubMed, Europe PMC or openFDA request is ever sent for one and its record
+    never enters the cache; the count is stamped on the manifest at freeze. A run whose every ID is
+    a holdout is refused, and so is a cache whose raw logs already hold a record logged for a
+    holdout (an acquisition made before the exclusion), before any request.
+    """
     try:
-        ids = _resolve_nct_ids(args.nct_list, args.nct_id)
+        exclusion = _load_holdout_exclusion(args.holdout_index)
+        listed = _resolve_nct_ids(args.nct_list, args.nct_id)
+        ids = exclusion.exclude_ids(listed)
+        if not ids:
+            raise ValueError(
+                f'all {len(listed)} requested NCT ID(s) are in_audit holdout trials, which are excluded; '
+                'nothing to acquire'
+            )
         throttle = A.Throttle(min_interval=args.min_interval)
-    except ValueError as exc:
+        held = A.holdout_records_in_raw_logs(args.cache, exclusion)
+        if held:
+            raise ValueError(
+                f'{args.cache}: the raw logs hold {held} record(s) logged for in_audit holdout trials (an '
+                'acquisition made before holdout exclusion); acquire into a new --cache'
+            )
+    except (ValueError, HX.HoldoutIndexError) as exc:
         print(f'REFUSED: {exc}', file=sys.stderr)
         return 1
+    print(f'holdouts: {exclusion.n_excluded} of {len(listed)} requested NCT IDs excluded '
+          f'({exclusion.index.n_holdouts} in the index)')
 
     get = A.requests_get()
     stages = args.stage or list(A.STAGES)
@@ -241,8 +285,8 @@ def cmd_acquire(args: argparse.Namespace) -> int:
 
     if 'freeze' in stages:
         try:
-            manifest = A.freeze_cache(cache_dir, ids)
-        except ValueError as exc:
+            manifest = A.freeze_cache(cache_dir, ids, exclusion=exclusion)
+        except (ValueError, HX.HoldoutIndexError) as exc:
             print(f'REFUSED: {exc}', file=sys.stderr)
             return 1
         print(
@@ -253,7 +297,14 @@ def cmd_acquire(args: argparse.Namespace) -> int:
 
 
 def cmd_freeze_local(args: argparse.Namespace) -> int:
+    """Freeze local CT.gov records into a new cache, in_audit holdouts dropped by ID first.
+
+    The universe is `--nct-list` when given (its holdout IDs are dropped and counted), else the local
+    records (a holdout's record is dropped by its ID before its content is read further, and
+    counted); see `A.ingest_local_ctgov_records`. The count is stamped on the manifest.
+    """
     try:
+        exclusion = _load_holdout_exclusion(args.holdout_index)
         wanted = A.read_nct_list(args.nct_list) if args.nct_list else None
         manifest = A.ingest_local_ctgov_records(
             args.records,
@@ -262,10 +313,13 @@ def cmd_freeze_local(args: argparse.Namespace) -> int:
             limit=args.limit,
             fetched_at=args.fetched_at,
             data_timestamp=args.data_timestamp,
+            exclusion=exclusion,
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, HX.HoldoutIndexError) as exc:
         print(f'REFUSED: {exc}', file=sys.stderr)
         return 1
+    print(f'holdouts: {exclusion.n_excluded} in_audit holdout trial(s) excluded '
+          f'({exclusion.index.n_holdouts} in the index)')
     print(
         f"freeze-local: froze {manifest['n_requested_nct_ids']} CT.gov v2 study record(s) "
         f"into {args.cache} (sha256={manifest['archives']['ctgov']['sha256_uncompressed'][:12]})"
@@ -274,28 +328,47 @@ def cmd_freeze_local(args: argparse.Namespace) -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
+    """Build the artifact family from a frozen cache, in_audit holdouts excluded.
+
+    The holdout index is read first. Curated reviews and documentary statements that name a holdout
+    are refused (a holdout must not be reviewed or recorded). A `--nct-list` subset selects from the
+    cache's frame, so a holdout ID in it is dropped without being counted again (it is counted where
+    the frame lost it: at acquisition, or among the cache's own IDs). The cache is loaded with the
+    exclusion (`A.load_frozen_cache`), which carries forward the manifest's acquisition count and
+    removes, and counts, any holdout an older cache still holds, dropping its records by key.
+    """
     try:
+        exclusion = _load_holdout_exclusion(args.holdout_index)
+        for curated, label in ((args.reviews, 'reviews.csv'), (args.statements, 'documentary_statements.csv')):
+            exclusion.refuse_curated_rows(HX.curated_csv_ids(curated), f'{curated.name} ({label})')
         # Checked before anything else, so a typo cannot seed a cache from --records first.
         if args.generated_at is not None:
             gen_problem = ART.generated_at_problem(args.generated_at)
             if gen_problem:
                 raise ValueError(gen_problem)
-        subset_ids = A.read_nct_list(args.nct_list) if args.nct_list else None
+        listed_subset = A.read_nct_list(args.nct_list) if args.nct_list else None
+        subset_ids = exclusion.without_holdouts(listed_subset) if listed_subset is not None else None
+        if subset_ids is not None and not subset_ids:
+            raise ValueError('every NCT ID in --nct-list is an in_audit holdout trial, which is excluded')
         if args.records is not None and not (args.cache / 'manifest.json').exists():
             if args.fetched_at is None or args.data_timestamp is None:
                 raise ValueError(
                     '--records seeds the cache from local files, so --fetched-at and --data-timestamp '
                     'are required: when the records were retrieved and the CT.gov data timestamp they reflect'
                 )
+            # A separate exclusion: the seeding freeze stamps its own count on the manifest, which the
+            # build's exclusion then carries forward once (`load_frozen_cache`). Seeding with a list, the
+            # list is the freeze's universe, so it is given whole and its holdouts are counted there.
             A.ingest_local_ctgov_records(
                 args.records,
                 args.cache,
-                nct_ids=subset_ids,
+                nct_ids=listed_subset,
                 limit=args.limit,
                 fetched_at=args.fetched_at,
                 data_timestamp=args.data_timestamp,
+                exclusion=HX.HoldoutExclusion(exclusion.index),
             )
-        frozen = A.load_frozen_cache(args.cache)
+        frozen = A.load_frozen_cache(args.cache, exclusion=exclusion)
         as_of_date = date.fromisoformat(args.as_of) if args.as_of else None
         files = ART.build_artifacts(
             frozen,
@@ -306,8 +379,9 @@ def cmd_build(args: argparse.Namespace) -> int:
             generated_at=args.generated_at or A.now_utc(),
             as_of=as_of_date,
             requested_nct_ids=subset_ids,
+            holdout_exclusion=exclusion.stamp(),
         )
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, HX.HoldoutIndexError) as exc:
         print(f'REFUSED: {exc}', file=sys.stderr)
         return 1
 
@@ -331,6 +405,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"({den['retrieved_trials']['n']} retrieved, {den['ctgov_posted_trials']['n']} CT.gov posted), "
         f"{den['evidence_links']['n']} evidence links -> {args.out}"
     )
+    stamp = run[HX.STAMP_KEY]
+    print(f"holdouts: {stamp['excluded_from_universe']} in_audit holdout trial(s) excluded "
+          f"({stamp['holdouts_in_index']} in the index)")
     return 0
 
 
@@ -339,6 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest='command', required=True)
 
     p_acq = sub.add_parser('acquire', help='Acquire and freeze cross-source responses (<= 2 req/s)')
+    p_acq.add_argument('--holdout-index', type=Path, required=True, help=HOLDOUT_INDEX_HELP)
     p_acq.add_argument('--cache', type=Path, default=ROOT / 'build' / 'disclosure_cache')
     p_acq.add_argument('--nct-list', type=Path, help='File containing NCT IDs (one per line)')
     p_acq.add_argument('--nct-id', action='append', help='Individual NCT ID (repeatable)')
@@ -347,6 +425,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help='Minimum seconds between requests per host (>= 0.5)')
 
     p_loc = sub.add_parser('freeze-local', help='Freeze local CT.gov v2 study JSON/JSON.gz/JSONL.gz records')
+    p_loc.add_argument('--holdout-index', type=Path, required=True, help=HOLDOUT_INDEX_HELP)
     p_loc.add_argument('--records', type=Path, required=True,
                        help='Directory of CT.gov v2 study files or a .json/.json.gz/.jsonl/.jsonl.gz file')
     p_loc.add_argument('--cache', type=Path, default=ROOT / 'build' / 'disclosure_cache')
@@ -356,6 +435,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_loc.add_argument('--data-timestamp', required=True, help=DATA_TIMESTAMP_HELP)
 
     p_bld = sub.add_parser('build', help='Offline deterministic build from frozen cache')
+    p_bld.add_argument('--holdout-index', type=Path, required=True, help=HOLDOUT_INDEX_HELP)
     p_bld.add_argument('--cache', type=Path, default=ROOT / 'build' / 'disclosure_cache')
     p_bld.add_argument('--out', type=Path, default=ROOT / 'build' / 'disclosure')
     p_bld.add_argument('--records', type=Path,

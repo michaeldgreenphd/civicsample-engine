@@ -26,6 +26,7 @@ from typing import Any
 
 from disclosure import METHOD_VERSION, SCHEMA_VERSION
 from disclosure import acquire as A
+from src import holdout_exclusion as HX
 from disclosure import coverage as C
 from disclosure import evidence as E
 from disclosure import timeline as T
@@ -547,8 +548,19 @@ def build_artifacts(
     generated_at: str,
     as_of: date | None = None,
     requested_nct_ids: list[str] | None = None,
+    holdout_exclusion: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the complete schema-version-1 disclosure artifact family strictly from `FrozenCache`."""
+    """Build the complete schema-version-1 disclosure artifact family strictly from `FrozenCache`.
+
+    `holdout_exclusion` is the stamp of the in_audit holdout exclusion the cache was loaded with
+    (`HoldoutExclusion.stamp()`, `src/holdout_exclusion.py`): the caller has already removed the
+    holdouts from `cache` (`A.load_frozen_cache(..., exclusion=...)`) and from `requested_nct_ids`.
+    It is recorded in run.json as given (index sha256 and counts, no IDs) and enters the run
+    identity, so a build under another index has another run_id.
+    """
+    stamp_issues = HX.stamp_problems(holdout_exclusion)
+    if stamp_issues:
+        raise ValueError(stamp_issues[0])
     gen_problem = generated_at_problem(generated_at) or generated_before_frozen_problem(
         generated_at, cache.manifest.get('frozen_at')
     )
@@ -762,6 +774,7 @@ def build_artifacts(
         'as_of_source': as_of_source,
         'producer': producer,
         'counting_units': COUNTING_UNITS,
+        HX.STAMP_KEY: dict(holdout_exclusion),
         'scope': {
             'n_cache_frame': len(cache.requested_nct_ids),
             'n_included': len(included_ids),
@@ -998,6 +1011,9 @@ def _check_contract(
         problems.append(f"run.json schema_version {run.get('schema_version')!r} != {SCHEMA_VERSION}")
     if run.get('scheduled') is not False:
         problems.append('run.json must state scheduled: false')
+    # The in_audit holdout exclusion stamp (src/holdout_exclusion.py): a build without a valid one was
+    # made before the exclusion or without --holdout-index, and is not a valid build.
+    problems.extend(HX.stamp_problems(run.get(HX.STAMP_KEY)))
     rid = run.get('run_id')
     if not isinstance(rid, str) or not RUN_ID_RE.match(rid):
         problems.append(f'run.json run_id {rid!r} is malformed')

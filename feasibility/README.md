@@ -63,14 +63,32 @@ refuses the build rather than silently dropping trials from the cohort. An envel
 requested ids is refused too, because a short answer could not be detected. `nextPageToken` is not
 consulted, since CT.gov returns one on full pages even when the requested ids were all answered.
 
+Every build and every site export requires `--holdout-index PATH`, the site's outcomes index
+(`clinical-trial-populations` `data/outcomes/index.json`); there is no default, and a run without it
+exits with usage and writes nothing. A trial whose `in_audit` is true there is an audit holdout and is
+**excluded** (`src/holdout_exclusion.py`): the input's bytes are read and hashed as given, but each
+holdout's row is removed by its id as soon as the file, line, envelope or container is decoded, before
+any record check, metric, termination classification, attribution or count, so no stratum, count,
+sponsor table, per-trial row or stopped-trial row includes it; a `--condition-mesh` line of one is
+dropped before it is read, and a curated `termination_reviews.csv` row naming one is refused (a holdout
+is never reviewed here). The index is read strictly: rows missing, an `in_audit` that is not exactly true
+or false, an id that is not `^NCT[0-9]{8}$`, or a repeated id or key refuse the run, with counts and
+positions and never an id. `run.json` `holdout_exclusion` records `rules_version`, `index_sha256` (of the
+index file's bytes), `holdouts_in_index` and `excluded_from_universe` (no id, no path); the contract
+requires it, and the exporter refuses a build without a valid stamp, one made under another index (its
+`index_sha256` differs: the index changed, rebuild) and one any of whose files names a holdout id. **A
+build made before this change, or outside the repository, has no stamp and is refused by the exporter
+until it is rebuilt.** The site `run.json` carries the stamp.
+
 ```bash
 # Build from weekly full records (never pass site demographics.part*.json.gz)
 python3 scripts/build_feasibility_benchmarks.py --demographics data/demographics.json.gz \
-    --condition-mesh data/condition_mesh.jsonl.gz --out build/feasibility
+    --condition-mesh data/condition_mesh.jsonl.gz --out build/feasibility \
+    --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 
 # Or build from a directory or frozen archive of full CT.gov API v2 records
 python3 scripts/build_feasibility_benchmarks.py --archive /path/to/full_records.jsonl.gz \
-    --out build/feasibility
+    --out build/feasibility --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 
 # Verify producer contract (also re-parses run.json generated_at and checks every trial's
 # condition_mesh.state against the known states). A JSON file, cell list, cell or trial row of the
@@ -79,7 +97,8 @@ python3 scripts/build_feasibility_benchmarks.py --archive /path/to/full_records.
 python3 scripts/check_feasibility_contract.py build/feasibility
 
 # Export compact site files (stages atomically after verifying build SHA-256s)
-python3 scripts/export_feasibility_site.py build/feasibility build/feasibility_site
+python3 scripts/export_feasibility_site.py build/feasibility build/feasibility_site \
+    --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 
 # Offline unit & contract test suite
 python3 -m pytest tests/feasibility -q
@@ -91,3 +110,5 @@ New files only: `feasibility/`, `scripts/build_feasibility_benchmarks.py`,
 `scripts/check_feasibility_contract.py`, `scripts/export_feasibility_site.py`, and
 `tests/feasibility/`. No existing module, workflow, sponsor rule table, or site record contract is
 modified.
+
+The audit holdout exclusion (`src/holdout_exclusion.py`) added a required `--holdout-index` to every build and export command, a required `holdout_exclusion` stamp to the build's `run.json` (the contract fails without it), and the same stamp to the site export's `run.json` (a new key; no site reader consumes this family's export yet). Builds made before it are refused by the exporter until rebuilt.

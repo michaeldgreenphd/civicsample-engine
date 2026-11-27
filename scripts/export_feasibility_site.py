@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """Export a verified feasibility-benchmarks build to compact site-consumable JSON files.
 
-  python3 scripts/export_feasibility_site.py BUILD_DIR OUT_DIR
-  python3 scripts/export_feasibility_site.py build/feasibility ../clinical-trial-populations/data/feasibility
+  python3 scripts/export_feasibility_site.py BUILD_DIR OUT_DIR --holdout-index INDEX
+  python3 scripts/export_feasibility_site.py build/feasibility ../clinical-trial-populations/data/feasibility \
+      --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 
 Runs by hand, makes no network call, and commits nothing.
+
+`--holdout-index` (required) is the site's outcomes index. The export is refused, `OUT_DIR` untouched,
+when the build's run.json has no valid `holdout_exclusion` stamp (a build made before the in_audit
+holdout exclusion), when the stamp's index sha256 is not this index's (the index changed since the
+build: rebuild), or when any file of the build, `trials.jsonl.gz` and so every stopped-trial row
+included, names a holdout id (`src/holdout_exclusion.py`). The site `run.json` carries the stamp (the
+index sha256 and counts only).
 
 Verification & safety guarantees:
 1. Full build check first: Loads `BUILD_DIR` and runs `feasibility.artifacts.check_contract`
@@ -36,6 +44,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from feasibility import artifacts  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 SITE_SCHEMA_VERSION = 1
 SITE_FILES = (
@@ -131,6 +140,9 @@ def select_site_files(parsed_build: dict[str, Any]) -> dict[str, Any]:
             "the build is not exported to the site (rebuild from a git checkout)"
         )
 
+    holdout_problems = HX.stamp_problems(run.get(HX.STAMP_KEY))
+    if holdout_problems:
+        raise ValueError(holdout_problems[0])
     s_run_id = site_run_id(run)
     stopped_rows = [slim_stopped_trial(t) for t in trials if t["termination"]["is_stopped_study"]]
 
@@ -168,6 +180,7 @@ def select_site_files(parsed_build: dict[str, Any]) -> dict[str, Any]:
             "method_version": run["method_version"],
             "termination_rules_version": run["termination_rules_version"],
             "producer": run["producer"],
+            HX.STAMP_KEY: HX.stamp_for_site(run[HX.STAMP_KEY]),
             "parameters": run["parameters"],
             "vocabularies": run["vocabularies"],
             "inputs": {
@@ -196,9 +209,17 @@ def select_site_files(parsed_build: dict[str, Any]) -> dict[str, Any]:
     return site_payloads
 
 
-def export_site(build_dir: Path, out_dir: Path) -> dict[str, Any]:
-    """Verify `build_dir`, select site payloads, and atomically replace `out_dir`."""
-    site_payloads = select_site_files(read_verified_build(build_dir))
+def export_site(build_dir: Path, out_dir: Path, holdout_index: HX.HoldoutIndex) -> dict[str, Any]:
+    """Verify `build_dir`, select site payloads, and atomically replace `out_dir`.
+
+    Before anything is staged, the build's `holdout_exclusion` stamp must be valid and made under
+    `holdout_index` (`HX.require_matching_stamp`) and no file of the build may name one of its holdout
+    ids (`HX.refuse_holdout_mentions`, defence in depth); either refusal leaves `out_dir` untouched.
+    """
+    parsed = read_verified_build(build_dir)
+    HX.require_matching_stamp(parsed["run.json"], holdout_index)
+    HX.refuse_holdout_mentions(build_dir, holdout_index)
+    site_payloads = select_site_files(parsed)
 
     expected_names = set(SITE_FILES) | {"run.json"}
     refusal = artifacts.replace_refusal(out_dir, expected_names, run_id_prefix="feasibility-")
@@ -241,11 +262,18 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("build", type=Path, help="Verified build directory written by build_feasibility_benchmarks.py.")
     ap.add_argument("out", type=Path, help="Site target directory to replace atomically (e.g., data/feasibility).")
+    ap.add_argument(
+        "--holdout-index",
+        type=Path,
+        required=True,
+        help="The site's outcomes index (data/outcomes/index.json) the build must have been made under; required.",
+    )
     args = ap.parse_args(argv)
 
     try:
-        manifest = export_site(args.build, args.out)
-    except ValueError as exc:
+        holdout_index = HX.load_holdout_index(args.holdout_index)
+        manifest = export_site(args.build, args.out, holdout_index)
+    except (ValueError, HX.HoldoutIndexError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 1
 

@@ -5,7 +5,10 @@
 
 Exits 0 when every file, sha256 digest, run_identity, denominator, summary
 count, small-cell withholding rule, and demographic/sponsor domain invariant
-holds; exits 1 otherwise.
+holds, and run.json carries a valid in_audit holdout exclusion stamp
+(``holdout_exclusion``: rules version, index sha256 and counts;
+``src/holdout_exclusion.py``); exits 1 otherwise. A build made before the
+holdout exclusion has no stamp and fails.
 """
 from __future__ import annotations
 

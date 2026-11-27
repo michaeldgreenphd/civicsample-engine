@@ -5,7 +5,10 @@
 
 Verifies `run.json` schema/regex/`run_identity`, exact file inventory and byte SHA-256 digests,
 absence of leaked private keys, per-record domain invariants, denominator bounds on every count
-object in `summary.json`, and full recount parity against `records.json`. Exits 0 on PASS, 1 on FAIL.
+object in `summary.json`, full recount parity against `records.json`, and a valid in_audit holdout
+exclusion stamp in run.json (`holdout_exclusion`: rules version, index sha256 and counts;
+`src/holdout_exclusion.py`; a build made before the exclusion has none and fails). Exits 0 on PASS,
+1 on FAIL.
 """
 from __future__ import annotations
 

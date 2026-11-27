@@ -43,6 +43,23 @@ from disclosure import artifacts as ART  # noqa: E402
 from disclosure import coverage as C  # noqa: E402
 from disclosure import evidence as E  # noqa: E402
 from disclosure import timeline as T  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
+
+# The fictional holdout index every CLI call is given (tests/fixtures/holdout_index/index.json). Its
+# two holdouts (NCT99777701, NCT99777702) are in no disclosure fixture, so the exclusion removes
+# nothing and every existing expectation holds; test_disclosure_holdouts.py adds a holdout.
+HOLDOUT_INDEX = ROOT / 'tests' / 'fixtures' / 'holdout_index' / 'index.json'
+HOLDOUT_ARGS = ['--holdout-index', str(HOLDOUT_INDEX)]
+
+
+def _no_holdout_stamp() -> dict[str, Any]:
+    """The stamp of an exclusion under the fixture index applied to the fixture frame (removes none)."""
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))
+    assert exclusion.exclude_ids(F.NCT_IDS) == list(F.NCT_IDS)
+    return exclusion.stamp()
+
+
+HOLDOUT_STAMP = _no_holdout_stamp()
 
 
 @pytest.fixture(scope='module')
@@ -60,6 +77,7 @@ def built_dir(tmp_path_factory: pytest.TempPathFactory, frozen_cache: A.FrozenCa
         '--out', str(out_dir),
         '--as-of', F.AS_OF,
         '--generated-at', F.GENERATED_AT,
+        *HOLDOUT_ARGS,
     ])
     assert rc == 0
     return out_dir
@@ -131,7 +149,7 @@ def test_throttle_refuses_a_non_finite_or_too_short_interval(tmp_path: Path, int
         A.Throttle(min_interval=interval)
     if interval is not True:
         assert cli_build.main(['acquire', '--cache', str(tmp_path / 'c'), '--nct-id', 'NCT09990001',
-                               '--min-interval', str(interval)]) == 1
+                               '--min-interval', str(interval), *HOLDOUT_ARGS]) == 1
         assert not (tmp_path / 'c').exists()
 
 
@@ -146,7 +164,7 @@ def test_local_freeze_refuses_a_limit_below_one(tmp_path: Path, limit: int) -> N
         A.ingest_local_ctgov_records(local_src, cache, limit=limit, **LOCAL_STAMPS)
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), '--limit', str(limit),
                            '--fetched-at', LOCAL_STAMPS['fetched_at'], '--data-timestamp',
-                           LOCAL_STAMPS['data_timestamp']]) == 1
+                           LOCAL_STAMPS['data_timestamp'], *HOLDOUT_ARGS]) == 1
     assert not A.raw_log_path(cache, 'ctgov').exists()
 
 
@@ -231,6 +249,7 @@ def test_unicode_line_separators_in_jsonl_logs_local_jsonl_and_frozen_archives(t
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(built) == []
     assert built['studies.json']['studies'][0]['brief_title'] == tricky_title
@@ -390,7 +409,7 @@ def test_freeze_local_refuses_a_data_timestamp_later_than_retrieval(
         A.ingest_local_ctgov_records(local_src, cache, fetched_at=fetched_at, data_timestamp=data_timestamp)
     assert not cache.exists()
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--fetched-at', fetched_at, '--data-timestamp', data_timestamp]) == 1
+                           '--fetched-at', fetched_at, '--data-timestamp', data_timestamp, *HOLDOUT_ARGS]) == 1
 
 
 # ---------------------------------------------------------------- 3. Partial-date interval bounds
@@ -544,6 +563,7 @@ def test_a_pubmed_date_outside_the_supported_years_is_not_a_publication_date(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     ref = next(x for x in built['links.json']['links']
                if x['nct_id'] == nct and x['source_route'] == 'registry_references' and x['target_id'] == '99000001')
@@ -629,6 +649,7 @@ def test_coverage_matrix_distinguishes_all_seven_states_and_never_conflates_not_
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(local_built) == []
     assert _cell_of(local_built, 'NCT09990005', 'literature_search')['state'] == 'not_searched'
@@ -690,6 +711,7 @@ def test_human_review_overrides_statements_orphans_and_private_key_stripping(
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     stmt_link = next(
         x for x in b_stmt['links.json']['links']
@@ -727,6 +749,7 @@ def test_human_review_overrides_statements_orphans_and_private_key_stripping(
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(reviewed_build) == []
     assert reviewed_build['links.json']['orphaned_reviews'] == ['link:0000000000000000']
@@ -777,6 +800,7 @@ def test_indeterminate_ctgov_results_review_and_human_rejected_epmc_hits(
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(res) == []
     assert _cell_of(res, 'NCT09990004', 'ctgov_results')['state'] == 'candidate_awaiting_review'
@@ -828,6 +852,7 @@ def test_transport_timeout_status_none_logs_search_incomplete_and_retries_on_res
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(built_timeout) == []
     # Every attempted-but-timed-out route MUST be `search_incomplete_or_blocked`, NEVER `not_searched`!
@@ -908,6 +933,7 @@ def test_byte_stable_run_identity_and_summary_count_objects(
         producer=cli_build.producer_metadata(),
         generated_at='2026-12-31T23:59:59+00:00',
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert second['run.json']['run_identity'] == built_files['run.json']['run_identity']
     assert second['run.json']['run_id'] == built_files['run.json']['run_id']
@@ -923,6 +949,7 @@ def test_byte_stable_run_identity_and_summary_count_objects(
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date(2026, 10, 31),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert different['run.json']['run_identity'] != built_files['run.json']['run_identity']
 
@@ -976,7 +1003,7 @@ def test_site_export_stages_atomically_verifies_hashes_and_protects_unrelated_di
     built_dir: Path,
 ) -> None:
     site_out = tmp_path / 'site' / 'disclosure'
-    assert cli_export.main([str(built_dir), str(site_out)]) == 0
+    assert cli_export.main([str(built_dir), str(site_out), *HOLDOUT_ARGS]) == 0
 
     exported_run = json.loads((site_out / 'run.json').read_text(encoding='utf-8'))
     assert exported_run['build_run_id'] == json.loads((built_dir / 'run.json').read_text(encoding='utf-8'))['run_id']
@@ -987,21 +1014,21 @@ def test_site_export_stages_atomically_verifies_hashes_and_protects_unrelated_di
         assert parsed['run_id'] == exported_run['run_id']
 
     # Re-exporting over an existing valid disclosure export succeeds atomically
-    assert cli_export.main([str(built_dir), str(site_out)]) == 0
+    assert cli_export.main([str(built_dir), str(site_out), *HOLDOUT_ARGS]) == 0
 
     # Exporting from a tampered build is refused and leaves existing valid `site_out` untouched
     bad_build = tmp_path / 'bad_build'
     shutil.copytree(built_dir, bad_build)
     (bad_build / 'links.json').write_bytes(b'{"corrupt":true}\n')
     before_bytes = (site_out / 'summary.json').read_bytes()
-    assert cli_export.main([str(bad_build), str(site_out)]) == 1
+    assert cli_export.main([str(bad_build), str(site_out), *HOLDOUT_ARGS]) == 1
     assert (site_out / 'summary.json').read_bytes() == before_bytes
 
     # Refuses to overwrite a directory containing unrelated files
     unrelated = tmp_path / 'unrelated_dir'
     unrelated.mkdir()
     (unrelated / 'important.txt').write_text('do not delete', encoding='utf-8')
-    assert cli_export.main([str(built_dir), str(unrelated)]) == 1
+    assert cli_export.main([str(built_dir), str(unrelated), *HOLDOUT_ARGS]) == 1
     assert (unrelated / 'important.txt').read_text(encoding='utf-8') == 'do not delete'
 
 
@@ -1118,6 +1145,7 @@ def test_real_stored_ctgov_records_offline_smoke_pipeline(tmp_path: Path) -> Non
         # When the tracked first-pass cache was fetched, and CT.gov's dataTimestamp then (its fetch_manifest.json).
         '--fetched-at', '2026-11-13T22:32:29+00:00',
         '--data-timestamp', '2026-11-13T10:00:06',
+        *HOLDOUT_ARGS,
     ]) == 0
     assert cli_build.main([
         'build',
@@ -1126,9 +1154,10 @@ def test_real_stored_ctgov_records_offline_smoke_pipeline(tmp_path: Path) -> Non
         '--as-of', '2026-11-01',
         # No --generated-at: freeze-local stamps the cache with the current time, and a build cannot be
         # generated before the cache it reads (generated_before_frozen_problem).
+        *HOLDOUT_ARGS,
     ]) == 0
     assert cli_check.main([str(build_out)]) == 0
-    assert cli_export.main([str(build_out), str(site_out)]) == 0
+    assert cli_export.main([str(build_out), str(site_out), *HOLDOUT_ARGS]) == 0
 
     summary = json.loads((site_out / 'summary.json').read_text(encoding='utf-8'))
     assert summary['denominators']['included_trials']['n'] == 25
@@ -1427,6 +1456,7 @@ def test_freeze_and_load_refuse_requested_ids_without_a_ctgov_study_record(
         'acquire', '--cache', str(cache),
         '--nct-id', 'NCT09990001', '--nct-id', 'NCT09991234',
         '--stage', 'freeze',
+        *HOLDOUT_ARGS,
     ])
     assert rc == 1
     assert (cache / 'manifest.json').read_bytes() == manifest_before
@@ -1439,6 +1469,7 @@ def test_freeze_and_load_refuse_requested_ids_without_a_ctgov_study_record(
         'acquire', '--cache', str(cache),
         '--nct-id', 'NCT09990001', '--nct-id', 'NCT09990008',
         '--stage', 'freeze',
+        *HOLDOUT_ARGS,
     ]) == 0
     assert A.load_frozen_cache(cache).requested_nct_ids == ['NCT09990001', 'NCT09990008']
 
@@ -1841,7 +1872,7 @@ def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_pa
 
     # NCT09990005 is absent locally: refused before anything is written, never logged as a CT.gov 404.
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS]) == 1
+                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 1
     assert not (cache / 'manifest.json').exists()
     assert not A.raw_log_path(cache, 'ctgov').exists()
     with pytest.raises(ValueError, match=r'not in the local CT\.gov records \(\[.NCT09990005.\]\)'):
@@ -1849,13 +1880,13 @@ def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_pa
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--nct-list', str(wanted),
                            '--out', str(out), '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT,
-                           *LOCAL_STAMP_ARGS]) == 1
+                           *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
 
     # With every listed ID present the freeze proceeds, and each record is the local 200 response.
     wanted.write_text('NCT09990004\n', encoding='utf-8')
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS]) == 0
+                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 0
     loaded = A.load_frozen_cache(cache)
     assert loaded.requested_nct_ids == ['NCT09990004']
     assert {k: v['status'] for k, v in loaded.ctgov.items() if k.startswith('ctgov/study/')} == {
@@ -1879,14 +1910,14 @@ def test_local_freeze_refuses_differing_snapshots_of_one_trial_and_accepts_ident
     (local_src / 'c_other.json').write_text(json.dumps(F.STUDIES['NCT09990005']), encoding='utf-8')
     cache = tmp_path / 'cache_dir_conflict'
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           *LOCAL_STAMP_ARGS]) == 1
+                           *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 1
     assert not (cache / 'manifest.json').exists()
     assert not A.raw_log_path(cache, 'ctgov').exists()
     with pytest.raises(ValueError, match=r'NCT09990004 in a_older\.json and b_newer\.json'):
         A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--out', str(out),
-                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT, *LOCAL_STAMP_ARGS]) == 1
+                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT, *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
 
     # The same conflict inside one JSONL file (two lines) is refused too.
@@ -1900,14 +1931,14 @@ def test_local_freeze_refuses_differing_snapshots_of_one_trial_and_accepts_ident
     wanted.write_text('NCT09990005\n', encoding='utf-8')
     subset = tmp_path / 'cache_subset'
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(subset),
-                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS]) == 0
+                           '--nct-list', str(wanted), *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 0
     assert A.load_frozen_cache(subset).requested_nct_ids == ['NCT09990005']
 
     # Byte-identical copies of one record (the same file shipped twice) freeze as one record.
     (local_src / 'b_newer.json').write_text(json.dumps(older), encoding='utf-8')
     same = tmp_path / 'cache_identical'
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(same),
-                           *LOCAL_STAMP_ARGS]) == 0
+                           *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 0
     loaded = A.load_frozen_cache(same)
     assert loaded.requested_nct_ids == ['NCT09990004', 'NCT09990005']
     assert loaded.ctgov['ctgov/study/NCT09990004']['body'] == older
@@ -1947,7 +1978,7 @@ def test_local_freeze_refuses_an_object_that_is_no_study_page_or_version_answer(
         A.ingest_local_ctgov_records(local_src, cache, **LOCAL_STAMPS)
     assert not A.raw_log_path(cache, 'ctgov').exists()
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(tmp_path / 'cli_cache'),
-                           *LOCAL_STAMP_ARGS]) == 1
+                           *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 1
 
 
 def test_local_freeze_reads_every_shape_the_stored_files_hold(tmp_path: Path) -> None:
@@ -2012,7 +2043,7 @@ def test_local_freeze_with_limit_still_compares_every_later_copy(tmp_path: Path)
     # compared, so the freeze is refused rather than keeping whichever snapshot sorted first.
     cache = tmp_path / 'cache_limited'
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), '--limit', '1',
-                           *LOCAL_STAMP_ARGS]) == 1
+                           *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 1
     assert not A.raw_log_path(cache, 'ctgov').exists()
     with pytest.raises(ValueError, match=r'NCT09990004 in a_first\.json and c_later\.json'):
         A.ingest_local_ctgov_records(local_src, cache, limit=1, **LOCAL_STAMPS)
@@ -2020,7 +2051,7 @@ def test_local_freeze_with_limit_still_compares_every_later_copy(tmp_path: Path)
     # With an identical later copy the limit applies as before: one trial, the one first in order.
     (local_src / 'c_later.json').write_text(json.dumps(older), encoding='utf-8')
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), '--limit', '1',
-                           *LOCAL_STAMP_ARGS]) == 0
+                           *LOCAL_STAMP_ARGS, *HOLDOUT_ARGS]) == 0
     assert A.load_frozen_cache(cache).requested_nct_ids == ['NCT09990004']
 
 
@@ -2150,6 +2181,7 @@ def test_reviewed_build_with_human_confirmed_candidates_passes_the_contract(
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     # Coverage verifies each route on the human confirmation, and the contract accepts it.
     assert ART.check_contract(reviewed) == []
@@ -2160,7 +2192,7 @@ def test_reviewed_build_with_human_confirmed_candidates_passes_the_contract(
     # End to end: the CLI build with these reviews is written, not refused.
     out = tmp_path / 'reviewed_build'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', F.AS_OF,
-                           '--generated-at', F.GENERATED_AT, '--reviews', str(rev_csv)]) == 0
+                           '--generated-at', F.GENERATED_AT, '--reviews', str(rev_csv), *HOLDOUT_ARGS]) == 0
     assert (out / 'run.json').exists()
 
 
@@ -3022,6 +3054,7 @@ def test_reviewed_rule_rejections_and_unverified_statements_export_where_coverag
         frozen_cache, reviews_path=empty, statements_path=stmt_csv,
         sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv', producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT, as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     stmt = next(x for x in probe['links.json']['links'] if x['source_route'] == 'documentary_statements')
     assert stmt['detail']['statement_check'] == 'excerpt_not_found_at_locator'
@@ -3041,7 +3074,7 @@ def test_reviewed_rule_rejections_and_unverified_statements_export_where_coverag
     build_dir = tmp_path / 'build'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(build_dir), '--as-of', F.AS_OF,
                            '--generated-at', F.GENERATED_AT, '--reviews', str(rev_csv),
-                           '--statements', str(stmt_csv)]) == 0
+                           '--statements', str(stmt_csv), *HOLDOUT_ARGS]) == 0
     files, _ = ART.load_dir(build_dir)
     assert ART.check_contract(files) == []
     # The confirmed rule rejection verifies its route; the indeterminate one is a live candidate.
@@ -3056,7 +3089,7 @@ def test_reviewed_rule_rejections_and_unverified_statements_export_where_coverag
     assert disc_05['n_unsettled_publication_candidates'] == 0
 
     site = tmp_path / 'site' / 'disclosure'
-    assert cli_export.main([str(build_dir), str(site)]) == 0
+    assert cli_export.main([str(build_dir), str(site), *HOLDOUT_ARGS]) == 0
     shown = {r['link_id'] for r in json.loads((site / 'evidence.json').read_text(encoding='utf-8'))['records']}
     aside_file = json.loads((site / 'evidence_set_aside.json').read_text(encoding='utf-8'))
     aside = {r['link_id'] for r in aside_file['records']}
@@ -3077,12 +3110,13 @@ def test_as_of_after_the_frozen_ctgov_data_is_refused(
         'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
         'producer': cli_build.producer_metadata(),
         'generated_at': F.GENERATED_AT,
+        'holdout_exclusion': HOLDOUT_STAMP,
     }
     with pytest.raises(ValueError, match=r'--as-of 2100-01-01 is after the CT.gov data the cache holds'):
         ART.build_artifacts(frozen_cache, **kwargs, as_of=date(2100, 1, 1))
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', '2100-01-01',
-                           '--generated-at', F.GENERATED_AT]) == 1
+                           '--generated-at', F.GENERATED_AT, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
     # The contract applies the same bound to an edited manifest.
     bad = copy.deepcopy(built_files)
@@ -3102,12 +3136,13 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
         'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
         'producer': cli_build.producer_metadata(),
         'as_of': date.fromisoformat(F.AS_OF),
+        'holdout_exclusion': HOLDOUT_STAMP,
     }
     with pytest.raises(ValueError, match='generated_at must'):
         ART.build_artifacts(frozen_cache, generated_at=value, **kwargs)
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', F.AS_OF,
-                           '--generated-at', value]) == 1
+                           '--generated-at', value, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
     bad = copy.deepcopy(built_files)
     bad['run.json']['generated_at'] = value
@@ -3188,7 +3223,7 @@ def test_generated_at_before_the_cache_was_frozen_is_refused(
         ART.build_artifacts(frozen_cache, **{**kwargs, 'generated_at': value})
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(out), '--as-of', F.AS_OF,
-                           '--generated-at', value]) == 1
+                           '--generated-at', value, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
     # The contract applies the same rule to an edited run.json.
     bad = copy.deepcopy(built_files)
@@ -3227,7 +3262,7 @@ def test_local_freeze_stamps_must_be_whole_timestamps(
     with pytest.raises(ValueError, match=expect):
         A.ingest_local_ctgov_records(local_src, cache, fetched_at=fetched_at, data_timestamp=data_timestamp)
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--fetched-at', fetched_at, '--data-timestamp', data_timestamp]) == 1
+                           '--fetched-at', fetched_at, '--data-timestamp', data_timestamp, *HOLDOUT_ARGS]) == 1
     assert not A.raw_log_path(cache, 'ctgov').exists()
     # Control: a UTC fetch time and CT.gov's offset-free data timestamp are accepted.
     assert A.timestamp_problem('2026-11-01T12:00:00Z', 'fetched_at', offset='utc') is None
@@ -3281,11 +3316,11 @@ def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tm
     # No default retrieval or data timestamp: freeze-local cannot run without both.
     for missing in (['--fetched-at', '2025-06-30T18:00:00+00:00'], ['--data-timestamp', '2025-06-30T09:00:00']):
         with pytest.raises(SystemExit):
-            cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *missing])
+            cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *missing, *HOLDOUT_ARGS])
     assert not cache.exists()
     # build --records seeds through the same path and refuses without them.
     out = tmp_path / 'out'
-    assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--out', str(out)]) == 1
+    assert cli_build.main(['build', '--cache', str(cache), '--records', str(local_src), '--out', str(out), *HOLDOUT_ARGS]) == 1
     assert not cache.exists() and not out.exists()
     with pytest.raises(ValueError, match='fetched_at must be a whole ISO 8601 date and time'):
         A.ingest_local_ctgov_records(local_src, cache, fetched_at='last June', data_timestamp='2025-06-30T09:00:00')
@@ -3293,7 +3328,7 @@ def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tm
     # Stated stamps are what the cache records; frozen_at is the time of freezing.
     before = A.now_utc()
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--fetched-at', '2025-06-30T18:00:00+00:00', '--data-timestamp', '2025-06-30T09:00:00']) == 0
+                           '--fetched-at', '2025-06-30T18:00:00+00:00', '--data-timestamp', '2025-06-30T09:00:00', *HOLDOUT_ARGS]) == 0
     after = A.now_utc()
     loaded = A.load_frozen_cache(cache)
     assert loaded.ctgov['ctgov/study/NCT09990004']['fetched_at'] == '2025-06-30T18:00:00+00:00'
@@ -3302,7 +3337,7 @@ def test_local_freeze_requires_stated_timestamps_and_freezes_at_the_real_time(tm
 
     # Without --as-of the 365-day window is evaluated at the stated data timestamp, not a fixed date. The
     # build is generated after the freeze (`after`), since it cannot be generated before the cache it reads.
-    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', after]) == 0
+    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', after, *HOLDOUT_ARGS]) == 0
     run = json.loads((out / 'run.json').read_text(encoding='utf-8'))
     assert run['as_of'] == '2025-06-30'
     assert run['sources']['ctgov']['data_timestamp'] == '2025-06-30T09:00:00'
@@ -3345,6 +3380,7 @@ def test_reviews_for_trials_outside_the_build_are_out_of_scope_not_orphaned(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=['NCT09990001', 'NCT09990002'],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert subset['run.json']['reviews'] == {
         'n_rows': 4,
@@ -3442,7 +3478,7 @@ def test_local_freeze_refuses_an_existing_cache_instead_of_mixing_its_records(
     shutil.copytree(frozen_cache.cache_dir, cache)
     assert frozen_cache.ctgov['ctgov/version/2026-11-01/begin']['body']['dataTimestamp'] == '2026-11-01T08:00:00'
     before = {p.relative_to(cache).as_posix(): p.read_bytes() for p in cache.rglob('*') if p.is_file()}
-    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *historical]) == 1
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache), *historical, *HOLDOUT_ARGS]) == 1
     with pytest.raises(A.CacheIntegrityError, match='new or empty cache directory'):
         A.ingest_local_ctgov_records(local_src, cache, fetched_at='2025-06-30T18:00:00+00:00',
                                      data_timestamp='2025-06-30T09:00:00')
@@ -3451,7 +3487,7 @@ def test_local_freeze_refuses_an_existing_cache_instead_of_mixing_its_records(
     # A new or empty directory takes the local freeze, and the stated version is the only one.
     empty = tmp_path / 'empty_cache'
     empty.mkdir()
-    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(empty), *historical]) == 0
+    assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(empty), *historical, *HOLDOUT_ARGS]) == 0
     loaded = A.load_frozen_cache(empty)
     assert [k for k in loaded.ctgov if k.startswith('ctgov/version/')] == ['ctgov/version/2025-06-30']
     assert loaded.literature_meta is None and loaded.openfda_meta is None
@@ -3482,6 +3518,7 @@ def test_reviews_cannot_unpost_ctgov_results_or_make_the_trial_unreported(
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(reviewed) == []
     for nct in ('NCT09990001', 'NCT09990004'):
@@ -3517,6 +3554,7 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
         sponsor_rules_path=ROOT / 'sponsors' / 'company_aliases.csv',
         producer=cli_build.producer_metadata(),
         generated_at=F.GENERATED_AT,
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     ct = single['run.json']['sources']['ctgov']
     assert [v['key'] for v in ct['versions']] == ['ctgov/version/2026-11-01/begin', 'ctgov/version/2026-11-01/end']
@@ -3544,11 +3582,12 @@ def test_resumed_acquisition_across_a_ctgov_refresh_records_the_range_and_needs_
         'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
         'producer': cli_build.producer_metadata(),
         'generated_at': F.GENERATED_AT,
+        'holdout_exclusion': HOLDOUT_STAMP,
     }
     with pytest.raises(ValueError, match=r'2026-11-01T08:00:00 to 2026-11-02T08:00:00.*pass --as-of'):
         ART.build_artifacts(resumed, **kwargs)
     out = tmp_path / 'out'
-    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', F.GENERATED_AT]) == 1
+    assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--generated-at', F.GENERATED_AT, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
 
     stated = ART.build_artifacts(resumed, **kwargs, as_of=date(2026, 11, 1))  # the earliest data timestamp binds
@@ -3588,6 +3627,7 @@ def _build_kwargs() -> dict[str, Any]:
         'sponsor_rules_path': ROOT / 'sponsors' / 'company_aliases.csv',
         'producer': cli_build.producer_metadata(),
         'generated_at': F.GENERATED_AT,
+        'holdout_exclusion': HOLDOUT_STAMP,
     }
 
 
@@ -3857,7 +3897,7 @@ def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
         A.load_frozen_cache(cache)
     out = tmp_path / 'out'
     assert cli_build.main(['build', '--cache', str(cache), '--out', str(out), '--as-of', F.AS_OF,
-                           '--generated-at', F.GENERATED_AT]) == 1
+                           '--generated-at', F.GENERATED_AT, *HOLDOUT_ARGS]) == 1
     assert not out.exists()
 
     # Follow the message: its command, split as a shell would, runs the script through python3 with
@@ -3870,7 +3910,7 @@ def test_a_cache_frozen_before_the_version_bracket_check_is_refused(
     assert (ROOT / argv[1]).is_file()
     id_file = tmp_path / 'ids.txt'
     id_file.write_text('\n'.join(manifest['requested_nct_ids']) + '\n', encoding='utf-8')
-    args = [str(id_file) if a == 'FILE' else a for a in argv[2:]]
+    args = [str(id_file) if a == 'FILE' else str(HOLDOUT_INDEX) if a == 'INDEX' else a for a in argv[2:]]
     assert args[args.index('--cache') + 1] == str(cache)
     calls: list[str] = []
     monkeypatch.setattr(A, 'requests_get', lambda: F.stub_get(calls))
@@ -3897,7 +3937,7 @@ def test_acquire_cli_refuses_when_the_version_request_fails(tmp_path: Path, monk
 
     monkeypatch.setattr(A, 'requests_get', lambda: get)
     cache = tmp_path / 'cache'
-    assert cli_build.main(['acquire', '--cache', str(cache), '--nct-id', 'NCT09990001']) == 1
+    assert cli_build.main(['acquire', '--cache', str(cache), '--nct-id', 'NCT09990001', *HOLDOUT_ARGS]) == 1
     assert not (cache / 'manifest.json').exists()
 
 
@@ -3937,21 +3977,21 @@ def test_unknown_git_provenance_is_null_builds_locally_and_is_never_exported(
     monkeypatch.setattr(cli_build.subprocess, 'run', git_missing)
     unknown = tmp_path / 'unknown_build'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(unknown),
-                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT]) == 0
+                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT, *HOLDOUT_ARGS]) == 0
     assert cli_check.main([str(unknown)]) == 0
     run = json.loads((unknown / 'run.json').read_text(encoding='utf-8'))
     assert (run['producer']['commit'], run['producer']['uncommitted_changes']) == (None, None)
     # ...but the site export refuses it and writes nothing.
     site = tmp_path / 'site'
-    assert cli_export.main([str(unknown), str(site)]) == 1
+    assert cli_export.main([str(unknown), str(site), *HOLDOUT_ARGS]) == 1
     assert not site.exists()
 
     # A dirty tree is honest provenance and exports.
     monkeypatch.setattr(cli_build.subprocess, 'run', git_answers((0, commit + '\n'), (0, ' M x\n')))
     dirty = tmp_path / 'dirty_build'
     assert cli_build.main(['build', '--cache', str(frozen_cache.cache_dir), '--out', str(dirty),
-                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT]) == 0
-    assert cli_export.main([str(dirty), str(site)]) == 0
+                           '--as-of', F.AS_OF, '--generated-at', F.GENERATED_AT, *HOLDOUT_ARGS]) == 0
+    assert cli_export.main([str(dirty), str(site), *HOLDOUT_ARGS]) == 0
 
     # The contract accepts a 40-hex commit or null, and a bool or null dirty flag, never false without a commit.
     files, _ = ART.load_dir(unknown)
@@ -4135,7 +4175,7 @@ def test_local_freeze_refuses_a_retrieval_time_after_the_freeze(tmp_path: Path) 
                                      data_timestamp='2099-12-31T10:00:00', frozen_at=F.GENERATED_AT)
     assert not cache.exists()
     assert cli_build.main(['freeze-local', '--records', str(local_src), '--cache', str(cache),
-                           '--fetched-at', '2100-01-01T00:00:00Z', '--data-timestamp', '2099-12-31T10:00:00']) == 1
+                           '--fetched-at', '2100-01-01T00:00:00Z', '--data-timestamp', '2099-12-31T10:00:00', *HOLDOUT_ARGS]) == 1
     assert not cache.exists()
     # Control: a retrieval time equal to the freeze is accepted.
     manifest = A.ingest_local_ctgov_records(local_src, cache, fetched_at=F.GENERATED_AT,
@@ -4221,6 +4261,7 @@ def test_study_record_with_a_mistyped_part_reads_as_a_failed_lookup_not_a_crash(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     row = next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)
     assert row['registry_state'] == 'lookup_failed'
@@ -4247,6 +4288,7 @@ def test_contradictory_results_flag_is_not_read_as_the_registry_negative(tmp_pat
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)['registry_state'] == 'lookup_failed'
     assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
@@ -4274,6 +4316,7 @@ def test_results_posting_date_beside_hasresults_false_is_not_read_as_posted_and_
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert _cell_of(built, nct, 'ctgov_results')['state'] == 'search_incomplete_or_blocked'
     timeline = _timeline_of(built, nct)
@@ -4408,6 +4451,7 @@ def test_results_date_after_retrieval_is_read_as_a_failed_lookup(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     row = next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)
     results_links = [x for x in built['links.json']['links'] if x['source_route'] == 'ctgov_results']
@@ -4456,6 +4500,7 @@ def test_an_actual_completion_after_retrieval_is_read_as_a_failed_lookup(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     row = next(x for x in built['studies.json']['studies'] if x['nct_id'] == nct)
     if not refused:
@@ -4499,6 +4544,7 @@ def test_a_qc_cycle_date_after_retrieval_is_read_as_a_failed_lookup(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     row = next(x for x in built['studies.json']['studies'] if x['nct_id'] == nct)
     cycles = _timeline_of(built, nct)['submission_infos']
@@ -4608,6 +4654,7 @@ def test_an_unreadable_populated_date_is_read_as_a_failed_lookup(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     row = next(s for s in built['studies.json']['studies'] if s['nct_id'] == nct)
     window = _timeline_of(built, nct)['window_365d']
@@ -4672,6 +4719,7 @@ def test_results_section_without_a_non_empty_module_is_not_posted_results(
         generated_at=F.GENERATED_AT,
         as_of=date.fromisoformat(F.AS_OF),
         requested_nct_ids=[nct],
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     links = [x for x in built['links.json']['links'] if x['source_route'] == 'ctgov_results']
     state = _cell_of(built, nct, 'ctgov_results')['state']
@@ -4737,6 +4785,7 @@ def test_a_rebuild_at_another_time_passes_with_the_same_identity(
         producer=cli_build.producer_metadata(),
         generated_at='2026-11-02T08:00:00+00:00',
         as_of=date.fromisoformat(F.AS_OF),
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert ART.check_contract(second) == []
     assert second['run.json']['run_identity'] == built_files['run.json']['run_identity']

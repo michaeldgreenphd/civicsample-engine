@@ -1,0 +1,9 @@
+{
+ "rows": [
+  {"nct_id": "NCT99777701", "in_audit": true},
+  {"nct_id": "NCT99777702", "in_audit": true},
+  {"nct_id": "NCT99777703", "in_audit": false}
+ ],
+ "schema_version": 1,
+ "source": "fictional: a stand-in for the site's data/outcomes/index.json; no row is a real trial"
+}

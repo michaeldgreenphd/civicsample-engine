@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from dap import METHOD_VERSION, SCHEMA_VERSION, UNIT_BASIS
+from src import holdout_exclusion as HX
 from dap.benchmarks import (
     MESH_STATES_EXTENDED,
     REGULATORY_ERAS,
@@ -774,12 +775,23 @@ def build_artifact_family(
     min_cell_trials: int,
     generated_at: str,
     snapshot_date: str,
+    holdout_exclusion: dict[str, Any],
 ) -> dict[str, Any]:
-    """Assemble the complete schema-version-1 DAP artifact family in memory."""
+    """Assemble the complete schema-version-1 DAP artifact family in memory.
+
+    ``holdout_exclusion`` is the stamp of the in_audit holdout exclusion the
+    study records were loaded with (``HoldoutExclusion.stamp()``,
+    ``src/holdout_exclusion.py``); the holdouts are already gone from
+    ``benchmark_result``. It is recorded in run.json as given (rules version,
+    index sha256, counts; no id) and enters the run identity.
+    """
     date_part = utc_timestamp_date(generated_at)
     problem = snapshot_date_problem(snapshot_date)
     if problem:
         raise ValueError(problem)
+    stamp_issues = HX.stamp_problems(holdout_exclusion)
+    if stamp_issues:
+        raise ValueError(stamp_issues[0])
 
     base_trials: list[dict[str, Any]] = [
         {"schema_version": SCHEMA_VERSION, **row}
@@ -815,6 +827,7 @@ def build_artifact_family(
         "scheduled": False,
         "unit_basis": UNIT_BASIS,
         "producer": producer,
+        HX.STAMP_KEY: dict(holdout_exclusion),
         "parameters": {
             "min_cell_trials": min_cell_trials,
             "snapshot_date": snapshot_date,
@@ -998,6 +1011,9 @@ def check_contract(loaded: dict[str, Any]) -> list[str]:
     dirty = prod.get("uncommitted_changes", "<missing>")
     if dirty is not None and not isinstance(dirty, bool):
         p.append(f"run.json: producer.uncommitted_changes must be true, false or null (got {dirty!r})")
+    # The in_audit holdout exclusion stamp (src/holdout_exclusion.py): without a valid one the build was
+    # made before the exclusion or without --holdout-index.
+    p.extend(HX.stamp_problems(run.get(HX.STAMP_KEY)))
 
     inputs = run.get("inputs") or {}
     for req_in in ("study_records", "condition_ontology", "sponsor_rules"):
