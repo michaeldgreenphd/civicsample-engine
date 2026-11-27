@@ -60,6 +60,7 @@ from feasibility.termination import (
     TERMINATION_CATEGORIES,
     TERMINATION_RULES_VERSION,
 )
+from src import holdout_exclusion as HX
 
 SCHEMA_VERSION = 1
 METHOD_VERSION = "feasibility-benchmarks-1"
@@ -725,8 +726,18 @@ def build_artifact_family(
     producer_meta: dict[str, Any],
     generated_at: str,
     min_cell_trials: int = DEFAULT_MIN_CELL_TRIALS,
+    holdout_exclusion: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
-    """Assemble all schema-version-1 feasibility objects and their exact serialized byte payloads."""
+    """Assemble all schema-version-1 feasibility objects and their exact serialized byte payloads.
+
+    `holdout_exclusion` is the stamp of the in_audit holdout exclusion the studies were loaded with
+    (`HoldoutExclusion.stamp()`, `src/holdout_exclusion.py`); the holdouts are already gone from
+    `trials`. It is recorded in run.json as given (rules version, index sha256, counts; no id) and
+    enters the run identity.
+    """
+    stamp_issues = HX.stamp_problems(holdout_exclusion)
+    if stamp_issues:
+        raise ValueError(stamp_issues[0])
     date_part = utc_timestamp_date(generated_at)
 
     strata_obj, sponsors_obj = build_strata_and_sponsors(
@@ -749,6 +760,7 @@ def build_artifact_family(
         "method_version": METHOD_VERSION,
         "termination_rules_version": TERMINATION_RULES_VERSION,
         "producer": producer_meta,
+        HX.STAMP_KEY: dict(holdout_exclusion),
         "inputs": inputs_meta,
         "parameters": {
             "min_cell_trials": min_cell_trials,
@@ -971,6 +983,9 @@ def check_contract(
     dirty = prod.get("uncommitted_changes")
     if dirty is not None and not isinstance(dirty, bool):
         problems.append(f"run.json: producer.uncommitted_changes {dirty!r} is neither a bool nor null")
+    # The in_audit holdout exclusion stamp (src/holdout_exclusion.py): without a valid one the build was
+    # made before the exclusion or without --holdout-index.
+    problems.extend(HX.stamp_problems(run.get(HX.STAMP_KEY)))
 
     inputs = run.get("inputs") or {}
     rec_in = inputs.get("records") or {}

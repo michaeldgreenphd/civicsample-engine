@@ -5,7 +5,9 @@
 
 Verifies `run.json` schema and `run_identity`, SHA-256 byte integrity of every sibling file,
 absence of leaked private review columns, per-trial operational/accrual/retention/termination
-invariants, small-cell withholding, and full `summary.json` recount parity against `trials.jsonl.gz`.
+invariants, small-cell withholding, full `summary.json` recount parity against `trials.jsonl.gz`,
+and a valid in_audit holdout exclusion stamp in run.json (`holdout_exclusion`: rules version, index
+sha256 and counts; `src/holdout_exclusion.py`; a build made before the exclusion has none and fails).
 Exits 0 on PASS, 1 on FAIL.
 """
 from __future__ import annotations

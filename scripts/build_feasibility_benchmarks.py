@@ -9,6 +9,13 @@ Examples:
   python3 scripts/build_feasibility_benchmarks.py --archive /path/to/full_records.jsonl.gz \
       --out build/feasibility
 
+Every run requires `--holdout-index`, the site's outcomes index (clinical-trial-populations
+`data/outcomes/index.json`; no default). A trial whose `in_audit` is true there is an audit holdout and is
+excluded: its row of the snapshot (and its `--condition-mesh` line) is removed by id before any other
+processing, so no stratum, count, sponsor table or stopped-trial row includes it; a curated termination
+review naming one is refused; run.json `holdout_exclusion` records how many were removed
+(`src/holdout_exclusion.py`).
+
 Never scheduled by `.github/workflows/extract.yml`. Refuses site-projected
 `demographics.part*.json.gz` files, refuses an `--archive` response envelope that failed, was altered
 or did not return exactly the trials it requested, refuses a `--condition-mesh` sidecar that lacks a line for any
@@ -40,6 +47,7 @@ if str(ROOT) not in sys.path:
 from feasibility import artifacts, benchmarks, metrics, termination  # noqa: E402
 from src import condition_mesh as cmesh  # noqa: E402
 from src import full_records  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 DEFAULT_REVIEWS_PATH = ROOT / "feasibility" / "termination_reviews.csv"
 DEFAULT_RULES_PATH = ROOT / "sponsors" / "company_aliases.csv"
@@ -240,6 +248,27 @@ def _study_nct_id(study: dict[str, Any]) -> str | None:
     ident = ps.get("identificationModule") if isinstance(ps, dict) else None
     nct = ident.get("nctId") if isinstance(ident, dict) else None
     return nct if isinstance(nct, str) else None
+
+
+def drop_holdouts(studies: list[Any], exclusion: HX.HoldoutExclusion | None) -> list[Any]:
+    """`studies` without the in_audit holdouts, each counted as removed from the build's universe.
+
+    Method (`src/holdout_exclusion.py`): the input's bytes have been read, hashed and decoded, since a
+    holdout's row can only be found by its id (`_study_nct_id`, which reads nothing else), but this runs
+    before any other processing (record checks, metrics, termination classification, attribution,
+    strata, counts), so no aggregate, sponsor table or stopped-trial row includes a holdout. An entry
+    whose id cannot be read is kept, and the record checks refuse it. With `exclusion` None (a library
+    caller that supplies no index) nothing is removed; the CLI always passes one.
+    """
+    if exclusion is None:
+        return studies
+    return [s for s in studies if not exclusion.exclude(_study_nct_id(s) if isinstance(s, dict) else None)]
+
+
+def _refuse_only_holdouts(kept: list[Any], exclusion: HX.HoldoutExclusion | None, source: str) -> None:
+    """Refuse an input whose every study record was an in_audit holdout: nothing is left to build."""
+    if not kept and exclusion is not None and exclusion.n_excluded:
+        raise ValueError(f"{source}: every study record is an in_audit holdout trial, which is excluded")
 
 
 def _study_objects(items: list[Any], where: str) -> list[dict[str, Any]]:
@@ -513,7 +542,9 @@ def _requested_nct_ids(envelope: dict[str, Any]) -> list[str] | None:
     return None
 
 
-def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str, Any]]:
+def _response_envelope_studies(
+    obj: dict[str, Any], where: str, exclusion: HX.HoldoutExclusion | None = None
+) -> list[dict[str, Any]]:
     """Studies from one cached HTTP response envelope, refusing a failed, altered or short one.
 
     Method: the cached-response formats in this repository
@@ -529,6 +560,10 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
     `nextPageToken` is not consulted: CT.gov returns one on a full page even when `filter.ids` has
     been answered completely (all 40 responses in the first-pass cache carry one, each with its 50
     requested trials).
+
+    With `exclusion`, in_audit holdouts are removed from the requested ids and from the returned
+    studies (counted, by id) once the body is decoded and before any study is read further; the two
+    are then compared without them, and a line that asked only for holdouts contributes nothing.
     """
     status = obj.get("status")
     if status != 200:
@@ -574,6 +609,11 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
             f"{where}: response envelope names no requested NCT ids (no `ids`, no `filter.ids` in "
             "`url`), so a response missing trials could not be detected"
         )
+    if exclusion is not None:
+        requested = exclusion.exclude_ids(requested)
+        studies = drop_holdouts(studies, exclusion)
+        if not requested and not studies:
+            return []
     returned = [_study_nct_id(s) for s in studies]
     problems: list[str] = []
     if any(n is None or not _NCT_ID_RE.fullmatch(n) for n in returned):
@@ -595,26 +635,29 @@ def _response_envelope_studies(obj: dict[str, Any], where: str) -> list[dict[str
     return studies
 
 
-def _extract_studies_from_json_obj(obj: Any, where: str) -> list[dict[str, Any]]:
+def _extract_studies_from_json_obj(
+    obj: Any, where: str, exclusion: HX.HoldoutExclusion | None = None
+) -> list[dict[str, Any]]:
     """Unwrap one study or a batch of studies from direct CT.gov v2 JSON or cached envelopes.
 
     `where` names the file (and line) for error messages. A batch or envelope that yields zero
     studies raises `ValueError`: an archive line or records file holding no study is a failed or
-    truncated fetch, not an empty part of the cohort.
+    truncated fetch, not an empty part of the cohort. With `exclusion`, in_audit holdouts are
+    removed by id once unwrapped (`drop_holdouts`), so a batch may yield fewer studies than it held.
     """
     if not isinstance(obj, dict):
         raise ValueError(f"{where}: expected JSON object for study record or envelope")
     if "protocolSection" in obj or "nct_id" in obj:
-        return [obj]
+        return drop_holdouts([obj], exclusion)
     if isinstance(obj.get("study"), dict):
-        return [obj["study"]]
+        return drop_holdouts([obj["study"]], exclusion)
     if "body" in obj:
-        return _response_envelope_studies(obj, where)
+        return _response_envelope_studies(obj, where, exclusion)
     if isinstance(obj.get("studies"), list):
         studies = _study_objects(obj["studies"], where)
         if not studies:
             raise ValueError(f"{where}: `studies` batch holds zero study records")
-        return studies
+        return drop_holdouts(studies, exclusion)
     raise ValueError(f"{where}: unrecognized study JSON shape with keys {sorted(obj.keys())[:8]}")
 
 
@@ -639,8 +682,15 @@ def load_studies_input(
     demographics_path: Path | None,
     records_dir: Path | None,
     archive_path: Path | None,
+    exclusion: HX.HoldoutExclusion | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Load studies and return `(studies, records_input_metadata)`."""
+    """Load studies and return `(studies, records_input_metadata)`.
+
+    With `exclusion` (the CLI always passes one), in_audit holdout trials are removed from the full
+    snapshot by id right after each file, line or container is decoded and before any other
+    processing (`drop_holdouts`): the input `sha256` is still that of the bytes as given, and
+    `n_records` counts the other trials.
+    """
     if records_dir is not None:
         if not records_dir.is_dir():
             raise ValueError(f"{records_dir}: --records-dir is not an existing directory")
@@ -658,7 +708,8 @@ def load_studies_input(
             dir_hash.update(fp.name.encode("utf-8") + b"\0" + raw + b"\0")
             text = _decompressed(raw, fp.name).decode("utf-8")
             obj = json.loads(text)
-            studies.extend(_extract_studies_from_json_obj(obj, fp.name))
+            studies.extend(_extract_studies_from_json_obj(obj, fp.name, exclusion))
+        _refuse_only_holdouts(studies, exclusion, records_dir.name)
         if not studies:
             raise ValueError(f"{records_dir}: decoded zero study records")
         _require_complete_records(studies, f"{records_dir}")
@@ -692,7 +743,8 @@ def load_studies_input(
                 obj = json.loads(raw_line.rstrip(b"\r").decode("utf-8"))
             except ValueError as exc:
                 raise ValueError(f"{archive_path.name}:{line_no}: invalid JSON line") from exc
-            studies.extend(_extract_studies_from_json_obj(obj, f"{archive_path.name}:{line_no}"))
+            studies.extend(_extract_studies_from_json_obj(obj, f"{archive_path.name}:{line_no}", exclusion))
+        _refuse_only_holdouts(studies, exclusion, archive_path.name)
         if not studies:
             raise ValueError(f"{archive_path}: archive holds zero study records")
         _require_complete_records(studies, archive_path.name)
@@ -738,6 +790,8 @@ def load_studies_input(
             f"{target}: weekly full-record run stamps cannot name the extraction run that produced "
             f"them ({'; '.join(malformed)})"
         )
+    records = drop_holdouts(records, exclusion)
+    _refuse_only_holdouts(records, exclusion, target.name)
     _require_weekly_phases(records, str(target))
     _require_weekly_lists(records, str(target))
     file_sha = hashlib.sha256(target.read_bytes()).hexdigest()
@@ -967,6 +1021,7 @@ def load_condition_mesh_sidecar(
     path: Path | None,
     *,
     records_meta: dict[str, Any],
+    exclusion: HX.HoldoutExclusion | None = None,
 ) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any] | None]:
     """Load optional `condition_mesh.jsonl.gz` sidecar keyed by `nct_id`, refusing another run's.
 
@@ -980,6 +1035,10 @@ def load_condition_mesh_sidecar(
     producer's line contract (`condition_mesh_line_problem`). `--records-dir` and `--archive`
     inputs carry no run stamps to compare against, so only cohort coverage is required for them
     (`require_condition_mesh_coverage`), and `provenance_check` says which check ran.
+
+    With `exclusion`, a line whose `nct_id` is an in_audit holdout is dropped as soon as the line is
+    decoded, before its contract, stamps or descriptors are read; the sidecar is a per-trial input
+    beside the universe, so it is not counted again, and `n_rows` counts the other lines.
     """
     if path is None:
         return None, None
@@ -1013,6 +1072,8 @@ def load_condition_mesh_sidecar(
                 f"{path.name}:{line_no}: condition_mesh sidecar line is a JSON {type(obj).__name__}, not an object"
             )
         nct = obj.get("nct_id")
+        if exclusion is not None and exclusion.is_holdout(nct):
+            continue
         if not isinstance(nct, str) or not nct.strip():
             raise ValueError(f"{path.name}:{line_no}: missing nct_id in condition_mesh sidecar")
         if nct in by_nct:
@@ -1124,10 +1185,26 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_OUT_PATH,
         help="Output artifact directory (default: build/feasibility).",
     )
+    ap.add_argument(
+        "--holdout-index",
+        type=Path,
+        required=True,
+        help="The site's outcomes index (clinical-trial-populations data/outcomes/index.json); trials whose "
+        "in_audit is true are audit holdouts and are excluded from the build. Required; no default.",
+    )
     args = ap.parse_args(argv)
 
     if args.min_cell_trials < 1:
         print("REFUSED: --min-cell-trials must be >= 1", file=sys.stderr)
+        return 1
+
+    try:
+        # The holdout index is read first; a curated review of a holdout is refused before any other
+        # field of the review file is read (a holdout must not be reviewed or recorded).
+        exclusion = HX.HoldoutExclusion(HX.load_holdout_index(args.holdout_index))
+        exclusion.refuse_curated_rows(HX.curated_csv_ids(args.reviews), args.reviews.name)
+    except HX.HoldoutIndexError as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -1138,9 +1215,10 @@ def main(argv: list[str] | None = None) -> int:
             demographics_path=args.demographics,
             records_dir=args.records_dir,
             archive_path=args.archive,
+            exclusion=exclusion,
         )
         mesh_by_nct, mesh_meta = load_condition_mesh_sidecar(
-            args.condition_mesh, records_meta=records_meta
+            args.condition_mesh, records_meta=records_meta, exclusion=exclusion
         )
 
         trials, sponsor_meta, review_meta = benchmarks.build_trial_records(
@@ -1178,6 +1256,7 @@ def main(argv: list[str] | None = None) -> int:
             producer_meta=producer_metadata(),
             generated_at=args.generated_at or now_utc_iso(),
             min_cell_trials=args.min_cell_trials,
+            holdout_exclusion=exclusion.stamp(),
         )
 
         problems = artifacts.check_contract(parsed_family, raw_bytes)
@@ -1191,7 +1270,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         artifacts.write_artifact_family(raw_bytes, args.out)
-    except ValueError as exc:
+    except (ValueError, HX.HoldoutIndexError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 1
 
@@ -1201,6 +1280,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{run['run_id']}: {den['trials']['n']} trials "
         f"({den['resolved_trials']['n']} resolved, {den['stopped_trials']['n']} stopped, "
         f"{den['actual_enrollment_trials']['n']} ACTUAL enrollment) -> {args.out}"
+    )
+    print(
+        f"holdouts: {exclusion.n_excluded} in_audit holdout trial(s) excluded from the input "
+        f"({exclusion.index.n_holdouts} in the index)"
     )
     return 0
 
