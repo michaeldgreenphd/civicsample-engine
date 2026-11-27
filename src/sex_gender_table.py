@@ -323,7 +323,7 @@ def parse_error_row(nct_id: Optional[str], enrollment: Any, snapshot_date: str) 
     return finish_row(_row_from_parsed(p, nct_id), enrollment, snapshot_date)
 
 
-def primary_measure(measures: Any) -> Optional[tuple[dict, sgp.ParsedMeasure]]:
+def primary_measure(measures: Any, preselected: bool = False) -> Optional[tuple[dict, sgp.ParsedMeasure]]:
     """The measure the vendored parser takes Female and Male from, with that measure parsed
     alone: (the measure dict, its sgp.ParsedMeasure), or None.
 
@@ -336,12 +336,14 @@ def primary_measure(measures: Any) -> Optional[tuple[dict, sgp.ParsedMeasure]]:
     The parser's own exceptions propagate; callers record them.
 
     Moved here from dap/demographics.py (_primary_sex_measure) so DAP's raw path and the weekly
-    producer (primary_measure_field) identify the same measure. The parser is not changed.
+    producer (primary_measure_field) identify the same measure. `preselected` marks a list that is
+    already the parser's selection (a retained raw record, select_raw_measures), read as
+    build_row_from_raw reads it. The parser is not changed.
     """
     if not isinstance(measures, list):
         return None
-    parsed = sgp.parse_trial(measures, None)
-    for measure in sgp.select_sex_gender_measures(measures):
+    parsed = sgp.parse_trial(measures, None, preselected=preselected)
+    for measure in (measures if preselected else sgp.select_sex_gender_measures(measures)):
         alone = sgp.parse_measure(measure)
         if (alone.title, alone.female, alone.male) == (parsed.measure_title, parsed.n_female, parsed.n_male):
             return measure, alone
@@ -382,6 +384,21 @@ def primary_measure_field(study: dict, row: dict) -> dict:
     `row` is the trial's sex/gender row (build_row or parse_error_row) from the same study, read
     as posted, as the parser reads it. The parser is not changed.
     """
+    measures = ((study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}).get("measures")
+    return _primary_measure_reading(measures, row, preselected=False)
+
+
+def primary_measure_field_from_raw(raw: dict, row: dict) -> dict:
+    """primary_measure_field for a retained raw record (select_raw_measures) and the row
+    build_row_from_raw (or parse_error_row) gives it: the same field the extraction wrote for that
+    trial, rebuilt with the row. scripts/build_sex_gender_table.py --write-back writes both back,
+    so a re-parse under a new parser rules version never leaves the field reading the old one."""
+    return _primary_measure_reading(raw.get("measures"), row, preselected=True)
+
+
+def _primary_measure_reading(measures: Any, row: dict, *, preselected: bool) -> dict:
+    """The sex_primary_measure field for `measures` (a study's posted baseline measures, or a
+    retained record's preselected ones) and the row parsed from them (primary_measure_field)."""
     def absent(reason: str) -> dict:
         return {"flag_multiclass_timepoint": None, "n_total_parsed": None, "absent_reason": reason}
 
@@ -390,9 +407,8 @@ def primary_measure_field(study: dict, row: dict) -> dict:
         return absent("parse_error")
     if status == "not_reported":
         return absent("no_sex_gender_measure")
-    measures = ((study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}).get("measures")
     try:
-        found = primary_measure(measures)
+        found = primary_measure(measures, preselected=preselected)
     except Exception:  # noqa: BLE001 - recorded on the field, as build_row's failure is on the row
         return absent("parse_error")
     if found is None:

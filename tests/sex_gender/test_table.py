@@ -430,6 +430,67 @@ def test_write_back_requires_one_to_one_coverage(tmp_path):
     assert meta["written_back"]["coverage_ok"] is False and meta["written_back"]["records_without_row"] == ["B"]
 
 
+def _multiclass_measure(title, classes):
+    """A standard-layout sex measure posting several classes (age bands, periods), each with the
+    same Female/Male rows; the parser reads the first and sets flag_multiclass_timepoint."""
+    return {"title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
+            "classes": [{"title": ct, "categories": [
+                {"title": c, "measurements": [{"groupId": "BG000", "value": str(v)}]} for c, v in cats]}
+                for ct, cats in classes]}
+
+
+def test_sex_primary_measure_rebuilt_from_a_raw_record_equals_the_extractions():
+    """The write-back rebuilds the field from the retained raw record; for the same trial it must be
+    the field src/extract_all.py wrote from the study."""
+    studies = [
+        _study("ONE", [_measure("Sex: Female, Male", [("Female", 30), ("Male", 20)])]),
+        _study("MULTI", [_multiclass_measure("Sex: Female, Male", [
+            ("18-64 years", [("Female", 29), ("Male", 21)]), (">=65 years", [("Female", 40), ("Male", 60)])])]),
+        _study("TWO", [_measure("Sex: Female, Male", [("Female", 10), ("Male", 12)]),
+                       _measure("Gender", [("Female", 10), ("Male", 11), ("Unknown or Not Reported", 1)])]),
+        _study("NONE", [_measure("Age, Continuous", [("Mean", 50)], param_type="MEAN", unit="years")]),
+    ]
+    for study in studies:
+        raw = sgt.select_raw_measures(study)
+        from_study = sgt.primary_measure_field(study, sgt.build_row(study, SNAP))
+        from_raw = sgt.primary_measure_field_from_raw(raw, sgt.build_row_from_raw(raw, SNAP))
+        assert from_raw == from_study, raw["nct_id"]
+    multi = sgt.primary_measure_field(studies[1], sgt.build_row(studies[1], SNAP))
+    assert multi["flag_multiclass_timepoint"] is True and multi["n_total_parsed"] == 50.0
+
+
+def test_write_back_rebuilds_sex_primary_measure_with_the_row(tmp_path):
+    """A re-parse rewrites the sex_gender row; the record's sex_primary_measure, read from the same
+    measures, is rebuilt with it. On 63974e0 the write-back replaced the row only, so a field from
+    an older parser rules version stayed beside the new row. A record from before the field
+    (no sex_primary_measure) stays without it."""
+    import gzip
+    import subprocess
+    import sys as _sys
+    stamps = {"snapshot_date": SNAP, "extracted_at": "2026-09-14T06:00:00+00:00", "pipeline_commit": "aaa"}
+    raws = [{**sgt.select_raw_measures(_study(n, [_measure("Sex: Female, Male", [("Female", 3), ("Male", 2)])])),
+             **stamps} for n in ("A", "B")]
+    p = str(tmp_path / "raw.jsonl.gz")
+    with gzip.open(p, "wt") as fh:
+        fh.write("".join(json.dumps(r) + "\n" for r in raws))
+    stale = {"flag_multiclass_timepoint": True, "n_total_parsed": 999.0, "absent_reason": None}
+    container = {"extracted_at": stamps["extracted_at"], "pipeline_commit": "aaa",
+                 "data": [{"nct_id": "A", "sex_gender": None, "sex_primary_measure": stale},
+                          {"nct_id": "B", "sex_gender": None}]}
+    json.dump(container, open(tmp_path / "demo.json", "w"))
+    res = subprocess.run([_sys.executable, os.path.join(ROOT, "scripts", "build_sex_gender_table.py"),
+                          "--from-raw", p, "--write-back", str(tmp_path / "demo.json"),
+                          "--out", str(tmp_path / "t.csv.gz"), "--meta", str(tmp_path / "m.json")],
+                         cwd=str(tmp_path), capture_output=True, text=True)
+    assert res.returncode == 0, res.stdout + res.stderr
+    a, b = json.load(open(tmp_path / "demo.json"))["data"]
+    rebuilt = {"flag_multiclass_timepoint": False, "n_total_parsed": 5.0, "absent_reason": None}
+    assert a["sex_primary_measure"] == rebuilt
+    assert a["sex_gender"]["n_female"] == 3
+    assert "sex_primary_measure" not in b
+    assert json.load(open(tmp_path / "m.json"))["written_back"]["updated"] == 2
+
+
 def test_write_back_refuses_a_container_from_another_extraction(tmp_path):
     """An older raw file may not be written into a newer pull's records: when both
     sides carry an extraction stamp they must agree, and on a mismatch nothing
