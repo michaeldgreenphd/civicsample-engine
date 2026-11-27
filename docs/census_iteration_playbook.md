@@ -316,7 +316,7 @@ fi
 - `$PLAN` names the run. M4's plan carries no id of its own, so the plan
   file's stem names the run's folder, `$RUN` (here
   `census-work/runs/next_batch_plan/`). Steps 3 to 6 keep this run's shards,
-  merged corpus and build report there and read no other run's. Give every
+  merged corpus, build report and bundle there and read no other run's. Give every
   run's plan a file name no earlier run has used: shard ids repeat from run
   to run (`<mode>-<pass role>-shard-01` begins every plan of a mode), so a
   reused name would put a new run's rows into an earlier run's shard
@@ -580,10 +580,10 @@ python scripts/build_outcomes_shards.py \
   --extracted-at <extracted-at> \
   --documents data/trial_document_profiles.jsonl \
   --locations "$RUN/merged/locations.jsonl" \
-  --out-dir data/outcomes_bundles \
+  --out-dir "$RUN/outcomes_bundles" \
   --report "$RUN/outcomes_build_report.json"
 
-python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-manifest "$INDEX"
+python scripts/build_outcomes_shards.py --check "$RUN/outcomes_bundles" --cohort-manifest "$INDEX"
 ```
 
 - `--manifest-cohort` is needed with the site index, whose rows carry no
@@ -604,8 +604,12 @@ python scripts/build_outcomes_shards.py --check data/outcomes_bundles --cohort-m
 - `--provenance` takes M4 provenance records, but no script writes them:
   `assemble_longitudinal_provenance` and `to_outcomes_layout_provenance` are
   library functions.
-- The default `--out-dir` is refused when `data/run.json` exists (a weekly
-  dataset in `data/`); pass another gitignored path then.
+- The bundle goes to `$RUN/outcomes_bundles`, inside this run's folder (and
+  so under `census-work/`, which the setup check above covers). M3 replaces
+  a target that already holds a bundle it wrote, so a fixed path shared by
+  every run would let a later run's build replace an earlier run's bundle.
+  M3's default `--out-dir`, `data/outcomes_bundles`, is not used here; it is
+  refused when `data/run.json` exists (a weekly dataset in `data/`).
 - M3 reads `--cohort-manifest` as a container that may hold, beside its row
   list, only header stamps (`extracted_at`, `pipeline_commit`,
   `source_pipeline_commit`, `indexer_rules_version`, `run_id`,
