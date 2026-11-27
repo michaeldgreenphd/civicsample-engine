@@ -1193,6 +1193,10 @@
         "shared": {
           "generated_at": "2026-11-24T15:59:07+00:00",
           "generated_by": "tests/sponsors/test_fixture_regression.py (section added to an existing block)"
+        },
+        "shared_entities": {
+          "generated_at": "2026-11-27T03:05:53+00:00",
+          "generated_by": "tests/sponsors/test_fixture_regression.py (section added to an existing block)"
         }
       },
       "shared": {
@@ -1207,6 +1211,14 @@
           "collaborator": 1,
           "lead": 0,
           "rows": 1
+        }
+      },
+      "shared_entities": {
+        "bristol-meyers squibb and pfizer": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0,
+          "rows": 2
         }
       }
     }

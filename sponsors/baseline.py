@@ -55,13 +55,13 @@ def uncovered_rules(fixture: pd.DataFrame, rules: pd.DataFrame) -> list[dict]:
 # before a section existed is completed by backfill_sections() (see
 # tests/sponsors/test_fixture_regression.py); a missing section is never
 # compared as if it were empty.
-SECTIONS = ("index", "companies", "entities", "shared")
+SECTIONS = ("index", "companies", "entities", "shared", "shared_entities")
 
 
 def compute_baseline(fixture: pd.DataFrame, rules: pd.DataFrame) -> dict:
     """Everything the regression compares: index totals, per-company counts
     by scope, per-entity counts (the as_registered view), and the bridge's
-    `shared` marker per company."""
+    `shared` marker per company and per entity."""
     idx = sr.build_index(fixture, rules)
     companies = {}
     for c in sorted(idx.canonical.unique()):
@@ -90,12 +90,33 @@ def compute_baseline(fixture: pd.DataFrame, rules: pd.DataFrame) -> dict:
                      "any": len(sr.trials(yes, c)),
                      "lead": len(sr.trials(yes, c, role="lead")),
                      "collaborator": len(sr.trials(yes, c, role="collaborator"))}
+    # `shared_entities` pin: the same shared=yes rows, keyed by as-registered
+    # entity (the `entities` view) instead of by canonical. It is a separate
+    # section rather than extra keys inside `entities`, so a block written
+    # before it is completed by adding a section (backfill_sections) and the
+    # stored `entities` counts are never rewritten for unchanged rules. It
+    # records which entities the shared=yes rows belong to, which `shared`
+    # does not: two opposite flips on rows of two entities of one canonical
+    # (one row yes -> no, another no -> yes, same role) leave index,
+    # companies, entities and every `shared` count alone, and change this
+    # section. A partnership literal is one entity under several canonicals;
+    # its rows are counted together here, one per canonical. Entity keys are
+    # already normalized (sr.parsed_entity), so `yes.entity == e` matches the
+    # rows trials(..., view="as_registered") selects. Only "yes" is counted,
+    # as in `shared`.
+    shared_entities = {}
+    for e in sorted(yes.entity.unique()):
+        t = sr.trials(yes, e, view="as_registered")
+        shared_entities[e] = {"rows": int((yes.entity == e).sum()),
+                              "any": len(t), "lead": int(t.is_lead.sum()),
+                              "collaborator": int(t.is_collaborator.sum())}
     return {
         "index": {"rows": int(len(idx)), "canonicals": int(idx.canonical.nunique()),
                   "trials": int(idx.nct_id.nunique())},
         "companies": companies,
         "entities": entities,
         "shared": shared,
+        "shared_entities": shared_entities,
     }
 
 

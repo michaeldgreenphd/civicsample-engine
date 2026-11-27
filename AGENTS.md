@@ -180,8 +180,8 @@ so a collision rejects one push and loses nothing.
 changes only by deliberate commit, and every version of it is keyed by its own
 sha256. `tests/sponsors/expected_counts.json` holds one baseline block per
 rules sha — index size, per-company any/lead/collaborator, per-entity counts,
-and per-company `shared=yes` bridge rows and trials, on the 2026-06-19
-industry fixture — and
+and per-company and per-entity `shared=yes` bridge rows and trials, on
+the 2026-06-19 industry fixture — and
 `test_fixture_regression.py::test_regression_or_explicit_rebaseline` looks up
 the block for the rules as they stand.
 
