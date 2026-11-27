@@ -2672,7 +2672,7 @@ def test_an_ontology_that_cannot_classify_is_refused(tmp_path: Path, doc: dict[s
 
 def test_the_shipped_ontology_and_a_minimal_one_load(tmp_path: Path) -> None:
     # Controls, on both heads.
-    assert benchmarks.OntologyClassifier().version == "1.0.0"
+    assert benchmarks.OntologyClassifier().version == "1.1.0"  # condition_ontology.json metadata
     path = tmp_path / "ontology.json"
     path.write_text(json.dumps({"metadata": {"version": "2"}, "categories": _ONE_CATEGORY}), encoding="utf-8")
     assert benchmarks.OntologyClassifier(path).classify_one("Breast Cancer") == ("Oncology", "Breast")

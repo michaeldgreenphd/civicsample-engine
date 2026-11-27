@@ -169,8 +169,11 @@ UNRETRIEVABLE_STATEMENT_SOURCE_TYPES = (
 
 OPENFDA_DRUG_FLOOD_THRESHOLD = 25
 # Strength of an openFDA drug-query link for one application, strongest first: an exact NCT token in
-# the record, then a reviewable candidate, then a candidate set aside by the flood rule.
+# the record, then a reviewable candidate, then a candidate set aside by the ANDA or flood rule.
 OPENFDA_CANDIDATE_STRENGTH = {'identifier_confirmed': 0, 'not_validated': 1, 'rejected_by_rule': 2}
+# Drugs@FDA numbers an abbreviated new drug application (a generic approval) `ANDA` + six digits
+# (`ANDA076543`), beside `NDA021436` and `BLA125514`.
+OPENFDA_ANDA_PREFIX = 'ANDA'
 
 LINK_ID_RE = re.compile(r'^link:[0-9a-f]{16}$')
 NCT_RE = re.compile(r'^NCT[0-9]{8}\Z')  # ASCII digits, no trailing newline (as acquire.NCT_RE)
@@ -918,6 +921,20 @@ def _openfda_sponsors_norm(app: dict[str, Any]) -> set[str]:
     return names
 
 
+def is_abbreviated_application(app_no: str) -> bool:
+    """Whether a Drugs@FDA application number names an ANDA (an abbreviated, generic application).
+
+    Read after whitespace is squashed (`squash_whitespace`, as every link's `target_id` is) and
+    without regard to case, so a padded or lower-case number from a malformed answer is classified
+    by its prefix all the same. The prefix cannot be mistaken for another: no NDA or BLA number
+    starts with `ANDA` in any case. On api.fda.gov (checked 2026-11-27) the endpoint's 29,481
+    records split exactly into `application_number:NDA*` (5,921), `BLA*` (488) and `ANDA*`
+    (23,072), a wildcard that matches case-sensitively (`anda*` matched none), and the 100 sampled
+    numbers of each prefix were all upper-case `<prefix>` + six digits.
+    """
+    return squash_whitespace(app_no).upper().startswith(OPENFDA_ANDA_PREFIX)
+
+
 def trial_sponsor_match_keys(
     study: dict[str, Any] | None,
     trial_canonicals: Iterable[str] = (),
@@ -1091,6 +1108,45 @@ def build_openfda_links(
                             'matched_drug': drug,
                             'sponsor_name': app.get('sponsor_name'),
                             'sponsor_agreement': True,
+                            'query_total_applications': total,
+                        },
+                    )
+                )
+            elif is_abbreviated_application(app_no):
+                # An ANDA is a generic approval: it rests on the reference drug's findings and on
+                # bioequivalence, not on trials of an investigational drug, so it does not disclose
+                # this trial's drug; one held by an applicant that is not the trial's sponsor or a
+                # collaborator is set aside, whatever the query's size. `acquire.drug_query_params`
+                # asks openFDA for NDA and BLA applications only, so this sets aside an ANDA a
+                # response still carries (should openFDA stop honouring that filter). It runs after
+                # the NCT-citation check (an ANDA citing the trial stays `identifier_confirmed`) and
+                # after sponsor agreement (the trial sponsor's own ANDA, when a response carries one,
+                # stays a reviewable candidate), and ahead of the flood rule, so the reason names the
+                # rule that applies to the record itself rather than the size of the query that
+                # returned it.
+                pair_links.append(
+                    _new_link(
+                        nct_id=nct_id,
+                        source_route='openfda_drugsfda',
+                        target_id_type='fda_application',
+                        target_id=app_no,
+                        citation_type='OPENFDA_SPONSOR_DRUG_CANDIDATE',
+                        publication_or_action_date=None,
+                        date_precision='missing',
+                        verbatim_excerpt=excerpt,
+                        source_sha256=rec_sha,
+                        locator={'json_path': f'results[{idx}]', 'application_number': app_no, 'drug_query': drug},
+                        automated_validation='rejected_by_rule',
+                        validation_reasons=[
+                            f'{app_no} is an abbreviated new drug application (ANDA), a generic approval that does '
+                            'not disclose the trial\'s investigational drug, and its FDA applicant does not match '
+                            'trial sponsor/collaborator',
+                            _uncited_application_reason(app, nct_id, app_no, drug_day),
+                        ],
+                        detail={
+                            'matched_drug': drug,
+                            'sponsor_name': app.get('sponsor_name'),
+                            'sponsor_agreement': False,
                             'query_total_applications': total,
                         },
                     )

@@ -1617,13 +1617,99 @@ def test_records_with_mistyped_optional_parts_are_refused(
 
 def test_an_untyped_api_v2_date_still_counts_as_realized() -> None:
     # A date struct without a type is a real registry state (955 of 3,371 stored unprojected trials
-    # have no start-date type), kept realized until the owner decides otherwise; only a weekly
+    # have no start-date type), kept realized by the owner's decision on #107; only a weekly
     # projection, which drops every type, is withheld.
     from feasibility import metrics
     api = metrics.compute_duration("2020-01-15", None, "2021-01-15", "ACTUAL")
     assert api["eligible_for_realized_duration"] is True and api["start_date_type"] is None
     weekly = metrics.compute_duration("2020-01-15", None, "2021-01-15", None, from_weekly_projection=True)
     assert weekly["status"] == "date_type_unavailable_in_weekly_projection"
+
+
+def _untyped_date_cohort() -> list[dict[str, Any]]:
+    return [
+        make_ctgov_study("NCT99700001"),  # every date ACTUAL: three realized windows, none untyped
+        make_ctgov_study("NCT99700002", start_type=None),  # untyped start: all three rest on it
+        make_ctgov_study("NCT99700003", completion_type=None),  # untyped completion: the study window only
+        # No primary completion: accrual falls back to the start-to-completion window, untyped here.
+        make_ctgov_study("NCT99700004", start_type=None, primary_completion_date=None, primary_completion_type=None),
+    ]
+
+
+def test_realized_windows_on_untyped_dates_are_counted() -> None:
+    # Owner decision on #107: untyped API v2 dates stay realized and the share of each benchmark resting
+    # on one is published. On 03fd911 neither a cell nor summary.json carried the count.
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_untyped_date_cohort(), reviews={})
+    cell = benchmarks.summarize_cell(trials, min_cell_trials=1)
+    assert cell["realized_windows_on_untyped_dates"] == {
+        "primary_duration": 1,
+        "study_duration": 3,
+        "actual_participants_per_month": 2,
+    }
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    items = {m["id"]: m for m in family["summary.json"]["metrics"]}
+    got = {
+        k: (items[k]["numerator"], items[k]["denominator"], items[k]["denominator_n"])
+        for k in (
+            "realized_primary_duration_on_untyped_date",
+            "realized_study_duration_on_untyped_date",
+            "actual_accrual_rate_on_untyped_date",
+        )
+    }
+    assert got == {
+        "realized_primary_duration_on_untyped_date": (1, "realized_primary_duration_trials", 3),
+        "realized_study_duration_on_untyped_date": (3, "realized_study_duration_trials", 4),
+        "actual_accrual_rate_on_untyped_date": (2, "accrual_rate_computed_trials", 4),
+    }
+    assert family["summary.json"]["overall_benchmarks"]["realized_windows_on_untyped_dates"] == cell[
+        "realized_windows_on_untyped_dates"
+    ]
+    assert artifacts.check_contract(family) == []
+    # The recount covers the new counts: an edited numerator fails the contract.
+    edited = json.loads(json.dumps(family))
+    next(m for m in edited["summary.json"]["metrics"] if m["id"] == "actual_accrual_rate_on_untyped_date")[
+        "numerator"
+    ] = 0
+    assert any("do not match recount" in p for p in artifacts.check_contract(edited))
+
+
+@pytest.mark.parametrize(
+    "edit",
+    ["window_none", "window_unknown", "window_list", "window_missing", "start_type_missing"],
+)
+def test_untyped_recount_reports_a_malformed_row_instead_of_raising(edit: str) -> None:
+    # On 2d1269e each edit raised KeyError or TypeError out of check_contract through the new recount.
+    # 03fd911 reported the computed velocity over an ineligible window and returned, except for a list
+    # window name, which raised TypeError in the per-trial window lookup there too.
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_untyped_date_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    row = next(t for t in family["trials.jsonl.gz"] if t["nct_id"] == "NCT99700002")
+    if edit == "start_type_missing":
+        del row["durations"]["primary_completion"]["start_date_type"]
+    elif edit == "window_missing":
+        del row["accrual"]["calendar_window_used"]
+    else:
+        bad_windows: dict[str, Any] = {"window_none": None, "window_unknown": "BANANA", "window_list": ["x"]}
+        row["accrual"]["calendar_window_used"] = bad_windows[edit]
+    problems = artifacts.check_contract(family)
+    assert problems
+    if edit != "start_type_missing":
+        assert any("velocity computed over a window not eligible" in p for p in problems)
+
+
+def test_typed_and_weekly_windows_count_no_untyped_date() -> None:
+    # Controls, on both heads: typed API v2 windows and weekly-projection windows (never realized without
+    # both types) leave the summary's realized counts as they were.
+    studies = [make_ctgov_study(f"NCT9970001{i}") for i in range(3)]
+    weekly = [make_weekly_record(f"NCT9970002{i}") for i in range(2)]
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(studies + weekly, reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    items = {m["id"]: m for m in family["summary.json"]["metrics"]}
+    assert items["realized_primary_duration_eligible"]["numerator"] == 3
+    assert items["actual_accrual_rate_computed"]["numerator"] == 3
+    cell = benchmarks.summarize_cell(trials, min_cell_trials=1)
+    assert cell.get("realized_windows_on_untyped_dates", {}).get("primary_duration", 0) == 0
+    assert cell.get("realized_windows_on_untyped_dates", {}).get("actual_participants_per_month", 0) == 0
 
 
 def test_record_with_results_but_has_results_false_is_refused(tmp_path: Path) -> None:

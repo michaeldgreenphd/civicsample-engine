@@ -83,3 +83,35 @@ def test_fuzzy_step_still_corrects_typos_in_long_keywords(condition, secondary):
     norm = cc._normalize(condition)
     assert not any(cc._keyword_matches(kw, norm) for kw in cc._all_keywords)  # reaches Step B
     assert cc.classify_condition(condition)[1] == secondary
+
+
+# Ontology 1.1.0 keywords. Each condition below is a string from the published
+# records that the whole-word rule left in Other (or, for opioid-induced
+# constipation, in Opioid Use Disorder through "opioid"); the new keyword
+# places it in its category.
+@pytest.mark.parametrize("condition, expected", [
+    ("Epilepsies, Partial", ("Neurology", "Epilepsy and Seizure Disorders")),
+    ("Myoclonus Epilepsies, Progressive", ("Neurology", "Epilepsy and Seizure Disorders")),
+    ("Chronic Idiopathic Constipation", ("Gastrointestinal", "Other Gastrointestinal")),
+    ("Opioid-Induced Constipation", ("Gastrointestinal", "Other Gastrointestinal")),
+    ("Post Traumatic Stress Disorder", ("Mental Health", "PTSD and Trauma")),
+    ("mCRPC", ("Oncology", "Prostate Cancer")),
+    ("CMML", ("Oncology", "Hematologic Malignancy")),
+    ("mCRC", ("Oncology", "Colorectal Cancer")),
+])
+def test_ontology_keywords_place_conditions_the_whole_word_rule_left_out(condition, expected):
+    assert cc.classify_condition(condition) == expected
+
+
+# Controls for keywords left out of 1.1.0, or worded to avoid a false match.
+# "cuti" would match "Cutis" through the plural rule, so it is not a keyword;
+# "post traumatic stress" without "disorder" reached "Post Traumatic Stiffness"
+# through the fuzzy step (88.9 against the threshold of 85).
+@pytest.mark.parametrize("condition, wrong_secondary", [
+    ("Xerosis Cutis", "Bacterial Infections"),
+    ("Calcinosis Cutis", "Bacterial Infections"),
+    ("Post Traumatic Stiffness", "PTSD and Trauma"),
+    ("mCRC", "Prostate Cancer"),
+])
+def test_new_keywords_do_not_reach_unrelated_conditions(condition, wrong_secondary):
+    assert cc.classify_condition(condition)[1] != wrong_secondary

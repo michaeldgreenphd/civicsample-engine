@@ -1,7 +1,8 @@
 """Synthetic fictional CT.gov v2, Europe PMC, NCBI PubMed, and openFDA fixtures (`NCT0999...`).
 
 Every trial identifier (`NCT09990001`..`NCT09990008`), PubMed ID (`990000xx`), FDA application
-(`NDA9900xx`/`BLA9900xx`), drug name (`zorbatinib`, `velorafenib`), and excerpt here is fictional.
+(`NDA9900xx`/`BLA9900xx`, and the generic `ANDA99xxxx` of the flooded query), drug name (`zorbatinib`,
+`velorafenib`), and excerpt here is fictional.
 """
 from __future__ import annotations
 
@@ -191,7 +192,8 @@ STUDIES: dict[str, dict[str, Any]] = {
         pcd=('2025', 'ACTUAL'),
         has_results=False,
     ),
-    # 7. COMPLETION_DATE_MISSING_OR_FUTURE (ESTIMATED) + unresolved PMID + phantom EPMC + flooded openFDA rule reject
+    # 7. COMPLETION_DATE_MISSING_OR_FUTURE (ESTIMATED) + unresolved PMID + phantom EPMC + openFDA rule rejects
+    #    (a flooded query of unrelated ANDAs, set aside by the ANDA rule; see `stub_get`)
     'NCT09990007': _make_study(
         'NCT09990007',
         title='Ongoing phase 3 study of generic-flooded compound',
@@ -358,7 +360,13 @@ def stub_get(calls: list[str] | None = None) -> A.Get:
                     }],
                 })
             if '"floodedgeneric"' in search:
-                # Flooded common generic (>= 25 total) with non-matching sponsor -> `rejected_by_rule`
+                # Flooded common generic (>= 25 total) with non-matching sponsor -> `rejected_by_rule`.
+                # The stub answers on the drug term and does not apply the request's NDA/BLA clause
+                # (`A.OPENFDA_INNOVATOR_APPLICATIONS`), so these ANDAs stand for a response that still
+                # carries generic applications, as one would if openFDA stopped honouring the filter.
+                # Each is set aside by the ANDA rule (`evidence.is_abbreviated_application`), which
+                # runs ahead of the flood rule; the flood rule on NDA/BLA results is pinned by
+                # `test_guard_flooded_nda_without_sponsor_agreement_keeps_the_flood_rule`.
                 return _json_resp({
                     'meta': {'results': {'total': 30}},
                     'results': [{

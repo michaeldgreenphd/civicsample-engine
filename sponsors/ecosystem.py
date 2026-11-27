@@ -969,7 +969,12 @@ def compute_ecosystem_baseline(
     fixture: pd.DataFrame,
     rules: pd.DataFrame,
 ) -> dict[str, Any]:
-    """Compute deterministic baseline block: index, sectors, organizations, entities.
+    """Compute deterministic baseline block: index, sectors, organizations, entities,
+    shared.
+
+    The sections are ECOSYSTEM_BASELINE_SECTIONS, in that order. `shared`
+    pins the index's `shared` column, which the other sections cannot see
+    (see the comment where it is built).
 
     Audit holdout: ENFORCES when `fixture` carries `in_audit` (a column,
     row-index level, cell or `attrs` entry under a flag name), raising
@@ -1010,6 +1015,31 @@ def compute_ecosystem_baseline(
             "collaborator": int(t["is_collaborator"].sum()),
         }
 
+    # `shared` pin (the same rule as sponsors/baseline.py's industry section).
+    # The counts above cannot see the index's `shared` column: a rule or
+    # matching change that flips a row's shared value moves no attribution,
+    # yet changes whether build_unified_index and check_cross_layer_conflicts
+    # let another claim on that literal through, and which trials a sum
+    # across organizations must dedupe on nct_id. For each organization with
+    # at least one shared=yes index row, pin the number of those rows and the
+    # trials they cover by scope (organization_trials, as `organizations`).
+    # `rows` catches a flip that leaves the trial counts alone (a trial that
+    # already has another shared=yes row for that organization in that
+    # role). An organization that loses its last shared=yes row drops out of
+    # the section, and the comparison reports it. Only "yes" is counted:
+    # within the index "no" is its complement, so a single flip either way
+    # changes `rows`. While every ecosystem rule is shared=no the section is
+    # empty, and that emptiness is what it pins.
+    yes = idx[idx["shared"] == "yes"]
+    shared: dict[str, dict[str, int]] = {}
+    for c in sorted(yes["canonical"].unique()):
+        shared[str(c)] = {
+            "rows": int((yes["canonical"] == c).sum()),
+            "any": int(len(organization_trials(yes, str(c)))),
+            "lead": int(len(organization_trials(yes, str(c), role="lead"))),
+            "collaborator": int(len(organization_trials(yes, str(c), role="collaborator"))),
+        }
+
     return {
         "index": {
             "rows": int(len(idx)),
@@ -1020,15 +1050,24 @@ def compute_ecosystem_baseline(
         "sectors": sectors,
         "organizations": organizations,
         "entities": entities,
+        "shared": shared,
     }
 
 
+# The sections of a baseline block, in comparison order. A block written
+# before a section existed is completed through write_ecosystem_baseline's
+# complete_sections (see tests/sponsors/test_ecosystem.py); a missing
+# section is never compared as if it were empty.
+ECOSYSTEM_BASELINE_SECTIONS: tuple[str, ...] = (
+    "index", "sectors", "organizations", "entities", "shared",
+)
 # The shape write_ecosystem_baseline accepts: what compute_ecosystem_baseline,
 # uncovered_ecosystem_rules and the fixture description produce
 # (_refuse_trial_shaped_baseline).
-_BASELINE_SECTIONS: frozenset[str] = frozenset({"index", "sectors", "organizations", "entities"})
+_BASELINE_SECTIONS: frozenset[str] = frozenset(ECOSYSTEM_BASELINE_SECTIONS)
 _BASELINE_INDEX_KEYS: frozenset[str] = frozenset({"rows", "sectors", "organizations", "trials"})
 _BASELINE_COUNT_KEYS: frozenset[str] = frozenset({"any", "lead", "collaborator"})
+_SHARED_COUNT_KEYS: frozenset[str] = _BASELINE_COUNT_KEYS | {"rows"}
 _UNCOVERED_KEYS: frozenset[str] = frozenset({"canonical", "sector", "rule_type", "pattern"})
 _FIXTURE_META_KEYS: frozenset[str] = frozenset({"file", "sha256", "snapshot_date"})
 _RULES_SHA_RE: re.Pattern[str] = re.compile(r"[0-9a-f]{64}")
@@ -1044,13 +1083,17 @@ _NCT_ID_ANYWHERE_RE: re.Pattern[str] = re.compile(
 )
 
 
-def _counts_section_ok(section: Any, keys: frozenset[str] | None) -> bool:
+def _counts_section_ok(
+    section: Any,
+    keys: frozenset[str] | None,
+    count_keys: frozenset[str] = _BASELINE_COUNT_KEYS,
+) -> bool:
     """True when `section` maps names to {count name: int}, or (keys given) names to ints.
 
     With `keys`, `section` itself must map exactly those names to ints (the
-    "index" section); without, it maps any str name to a mapping of
-    _BASELINE_COUNT_KEYS to ints. An int is `type(v) is int`: a bool is not
-    a count.
+    "index" section); without, it maps any str name to a mapping of exactly
+    `count_keys` to ints (_BASELINE_COUNT_KEYS by default; _SHARED_COUNT_KEYS
+    for "shared"). An int is `type(v) is int`: a bool is not a count.
     """
     if not isinstance(section, dict):
         return False
@@ -1059,7 +1102,7 @@ def _counts_section_ok(section: Any, keys: frozenset[str] | None) -> bool:
     return all(
         isinstance(name, str)
         and isinstance(counts, dict)
-        and set(counts) == _BASELINE_COUNT_KEYS
+        and set(counts) == count_keys
         and all(type(v) is int for v in counts.values())
         for name, counts in section.items()
     )
@@ -1093,12 +1136,15 @@ def _refuse_trial_shaped_baseline(
     is read or written, each part must have exactly the shape its producer
     gives it, or ValueError is raised:
       * rules_sha: 64 lowercase hex digits (sha256_file);
-      * block: exactly the sections "index", "sectors", "organizations"
-        and "entities" (compute_ecosystem_baseline); "index" maps "rows",
-        "sectors", "organizations" and "trials" to ints, and each other
-        section maps a name to "any", "lead" and "collaborator" ints (a
-        bool is not an int here), "sectors" naming only sectors this
-        module defines;
+      * block: exactly the sections ECOSYSTEM_BASELINE_SECTIONS ("index",
+        "sectors", "organizations", "entities" and "shared":
+        compute_ecosystem_baseline); "index" maps "rows", "sectors",
+        "organizations" and "trials" to ints; "sectors", "organizations"
+        and "entities" map a name to "any", "lead" and "collaborator" ints,
+        and "shared" maps a name to "rows", "any", "lead" and
+        "collaborator" ints (a bool is not an int here); "sectors" names
+        only sectors this module defines, and "shared" only organizations
+        the block's "organizations" names;
       * uncovered: a list of records with exactly the str fields
         "canonical", "sector", "rule_type" and "pattern"
         (uncovered_ecosystem_rules);
@@ -1121,8 +1167,8 @@ def _refuse_trial_shaped_baseline(
         extra = len(set(block) - _BASELINE_SECTIONS) if isinstance(block, dict) else 0
         raise ValueError(
             "write_ecosystem_baseline: block must hold exactly the sections index, "
-            f"sectors, organizations and entities ({extra} other key(s)); a baseline "
-            "holds aggregate counts only, so nothing is written"
+            f"sectors, organizations, entities and shared ({extra} other key(s)); a "
+            "baseline holds aggregate counts only, so nothing is written"
         )
     sections_ok = (
         _counts_section_ok(block["index"], _BASELINE_INDEX_KEYS)
@@ -1130,7 +1176,9 @@ def _refuse_trial_shaped_baseline(
             _counts_section_ok(block[section], None)
             for section in ("sectors", "organizations", "entities")
         )
+        and _counts_section_ok(block["shared"], None, _SHARED_COUNT_KEYS)
         and set(block["sectors"]) <= VALID_ECOSYSTEM_SECTORS | set(UNIFIED_SECTORS)
+        and set(block["shared"]) <= set(block["organizations"])
     )
     if not sections_ok:
         raise ValueError(
@@ -1184,6 +1232,8 @@ def write_ecosystem_baseline(
     uncovered: list[dict[str, str]],
     fixture_meta: dict[str, Any],
     path: str = EXPECTED_ECOSYSTEM_PATH,
+    *,
+    complete_sections: Iterable[str] = (),
 ) -> None:
     """Write a generated baseline block keyed by ecosystem_rules.csv SHA-256.
 
@@ -1193,21 +1243,126 @@ def write_ecosystem_baseline(
     compute_ecosystem_baseline, uncovered_ecosystem_rules, the fixture
     description), with no NCT id anywhere in them; otherwise ValueError is
     raised and nothing is written (_refuse_trial_shaped_baseline).
+
+    complete_sections: instead of writing a new block, add these sections of
+    `block` to the block already stored for `rules_sha`: the case of a block
+    written before compute_ecosystem_baseline produced them. Method: after
+    the shape check above, the names must be sections of
+    ECOSYSTEM_BASELINE_SECTIONS (checked before the file is read); the
+    stored block must exist, lack every named section, and hold every
+    other section with exactly `block`'s counts, so a section is never
+    added beside counts that have drifted; and the file's fixture
+    description must equal `fixture_meta`. Otherwise ValueError, and
+    nothing is written. Only the named sections are added, each stamped
+    under `sections_backfilled`; generated_at, generated_by,
+    not_covered_by_fixture and the fixture description stay as they are. A
+    stored section is never overwritten (that would be a silent
+    re-baseline). Messages name sections and counts, never a block key or
+    value (_complete_stored_block).
     """
     _refuse_trial_shaped_baseline(rules_sha, block, uncovered, fixture_meta)
+    to_complete = _sections_to_complete(complete_sections)
     data = load_expected_ecosystem(path)
-    data["fixture"] = fixture_meta
-    data.setdefault("baselines", {})[rules_sha] = {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "generated_by": (
-            "tests/sponsors/test_ecosystem.py (auto re-baseline on rules change)"
-        ),
-        "not_covered_by_fixture": uncovered,
-        **block,
-    }
+    if to_complete:
+        _complete_stored_block(data, rules_sha, block, fixture_meta, to_complete)
+    else:
+        data["fixture"] = fixture_meta
+        data.setdefault("baselines", {})[rules_sha] = {
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "generated_by": (
+                "tests/sponsors/test_ecosystem.py (auto re-baseline on rules change)"
+            ),
+            "not_covered_by_fixture": uncovered,
+            **block,
+        }
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, sort_keys=True)
         fh.write("\n")
+
+
+def _sections_to_complete(sections: Any) -> tuple[str, ...]:
+    """The validated complete_sections of write_ecosystem_baseline, in section order.
+
+    Method: an iterable (not a str) of distinct names, each one of
+    ECOSYSTEM_BASELINE_SECTIONS, leaving at least one section to compare
+    the stored block against; otherwise ValueError naming a count only, so a
+    stray value is never copied into a message. Runs before any file is read.
+    """
+    if isinstance(sections, (str, bytes)):
+        raise ValueError(
+            "write_ecosystem_baseline: complete_sections must be a collection of "
+            "section names, not one string; nothing is written"
+        )
+    names = list(sections)
+    unknown = sum(1 for n in names if not isinstance(n, str) or n not in _BASELINE_SECTIONS)
+    if unknown or len(set(names)) != len(names):
+        raise ValueError(
+            f"write_ecosystem_baseline: complete_sections holds {unknown} name(s) that "
+            "are not baseline sections, or a repeated name; nothing is written"
+        )
+    if names and len(set(names)) == len(ECOSYSTEM_BASELINE_SECTIONS):
+        raise ValueError(
+            "write_ecosystem_baseline: complete_sections may not name every section; "
+            "at least one stored section must be compared, so nothing is written"
+        )
+    return tuple(s for s in ECOSYSTEM_BASELINE_SECTIONS if s in names)
+
+
+def _complete_stored_block(
+    data: dict[str, Any],
+    rules_sha: str,
+    block: dict[str, Any],
+    fixture_meta: dict[str, Any],
+    sections: tuple[str, ...],
+) -> None:
+    """Add `sections` of `block` to the stored block for `rules_sha` in `data`.
+
+    Method: the checks write_ecosystem_baseline's complete_sections
+    documents, in order (stored block present, same fixture description,
+    named sections absent, every other section present and equal), each a
+    ValueError that names sections only; then the named sections are added
+    and stamped under `sections_backfilled`. Mutates `data`; reads and
+    writes no file (write_ecosystem_baseline does).
+    """
+    stored = data.get("baselines", {}).get(rules_sha)
+    if not isinstance(stored, dict):
+        raise ValueError(
+            "write_ecosystem_baseline: complete_sections needs a block already "
+            "stored for rules_sha; nothing is written"
+        )
+    if data.get("fixture") != fixture_meta:
+        raise ValueError(
+            "write_ecosystem_baseline: the stored block was computed on another "
+            "fixture description than fixture_meta; nothing is written"
+        )
+    already = [s for s in sections if s in stored]
+    if already:
+        raise ValueError(
+            f"write_ecosystem_baseline: {', '.join(already)} already stored; a stored "
+            "section is never overwritten, so nothing is written"
+        )
+    kept = [s for s in ECOSYSTEM_BASELINE_SECTIONS if s not in sections]
+    absent = [s for s in kept if s not in stored]
+    if absent:
+        raise ValueError(
+            f"write_ecosystem_baseline: the stored block also lacks {', '.join(absent)}, "
+            "which complete_sections does not name; nothing is written"
+        )
+    drifted = [s for s in kept if stored[s] != block[s]]
+    if drifted:
+        raise ValueError(
+            f"write_ecosystem_baseline: stored {', '.join(drifted)} differ from block; a "
+            "section is added only beside matching counts, so nothing is written"
+        )
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for s in sections:
+        stored[s] = block[s]
+        stored.setdefault("sections_backfilled", {})[s] = {
+            "generated_at": stamp,
+            "generated_by": (
+                "tests/sponsors/test_ecosystem.py (section added to an existing block)"
+            ),
+        }
 
 
 def diff_ecosystem_blocks(
@@ -1215,9 +1370,16 @@ def diff_ecosystem_blocks(
     actual: dict[str, Any],
     limit: int = 15,
 ) -> list[str]:
-    """Human-readable differences between two ecosystem baseline blocks."""
+    """Human-readable differences between two ecosystem baseline blocks.
+
+    A section the earlier block lacks (written before the section existed)
+    is reported once as such, not as every one of its values being new.
+    """
     out: list[str] = []
-    for section in ("index", "sectors", "organizations", "entities"):
+    for section in ECOSYSTEM_BASELINE_SECTIONS:
+        if section not in expected:
+            out.append(f"{section}: not in the earlier block, nothing to compare")
+            continue
         e = expected.get(section, {})
         a = actual.get(section, {})
         for k in sorted(set(e) | set(a)):

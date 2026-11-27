@@ -1070,27 +1070,65 @@ def drug_query_key(drug_norm: str) -> str:
 
 
 # Drugs@FDA fields a drug term may appear in; generic and brand names often differ, so a match in
-# any one field is enough.
+# any one field is enough. `openfda.substance_name` is the harmonized active-substance name openFDA
+# attaches to the records it can tie to a product label (`PEMBROLIZUMAB`, `METFORMIN HYDROCHLORIDE`).
+# It is searched in case a record carries the term only there. On api.fda.gov (2026-11-27) it is a
+# searchable field of `/drug/drugsfda.json` on its own (`openfda.substance_name:"metformin"`
+# matched 87 applications), but it added no application to what the other four fields matched for
+# any of 100 common generic names, so the candidate set is expected to widen rarely, if at all.
 OPENFDA_DRUG_FIELDS = (
     'openfda.generic_name',
     'openfda.brand_name',
+    'openfda.substance_name',
     'products.brand_name',
     'products.active_ingredients.name',
 )
 
+# The application types a drug-term query may return: new drug applications (`NDA021436`, 505(b),
+# 505(b)(2) included) and biologics license applications (`BLA125514`). Those are the applications
+# that can rest on clinical investigations of the drug, so they are where a trial of an
+# investigational drug can be disclosed. An abbreviated new drug application (`ANDA076543`,
+# 505(j)) is a generic approval: it rests on the reference drug's findings and on bioequivalence,
+# not on the trials of an investigational drug, so it does not disclose the trial's drug. Common
+# ingredients return hundreds of unrelated generic makers' ANDAs, which pushed a query past its
+# `limit` of 100 (coverage then reads the route as truncated, `search_incomplete_or_blocked`) or
+# past `evidence.OPENFDA_DRUG_FLOOD_THRESHOLD`. The cost: a trial whose own sponsor holds an ANDA
+# for the drug (a generic maker's bioequivalence study) no longer gets that ANDA as a drug-term
+# candidate; only the direct NCT-ID query, which is not restricted, can still find it, when the
+# record carries the NCT ID. The two wildcards are prefix matches on
+# `application_number`, written in upper case because openFDA matches them case-sensitively
+# (`application_number:anda*` matches nothing) and Drugs@FDA writes every number so; the space
+# between them is openFDA's OR (it is sent as `+`, which openFDA decodes to a space). Checked on
+# api.fda.gov (2026-11-27) before use: for metformin, semaglutide, pembrolizumab and adalimumab
+# the clause's total is the NDA-only plus the BLA-only total, the clause plus the ANDA-only total
+# is the unrestricted total, `NDA* OR BLA*` gives the same totals, and every result returned is
+# an NDA or BLA; a prefix no application has (`ZZZ*`) matches nothing; and NDA*, BLA* and ANDA*
+# together count every one of the endpoint's 29,481 records. Over 100 common generic names the
+# restriction took the matched applications from 6,531 (5,604 of them ANDAs; 17 names past 100)
+# to 927, all NDA or BLA, none past 100, and left no name with zero matches.
+# `evidence.build_openfda_links` still sets aside an ANDA a response carries without sponsor
+# agreement, should the filter stop being honoured. The direct NCT-ID query carries no such clause.
+OPENFDA_INNOVATOR_APPLICATIONS = 'application_number:NDA* application_number:BLA*'
+
 
 def drug_query_params(drug_norm: str) -> dict[str, str]:
-    """openFDA `search` matching `drug_norm` as a phrase in ANY of `OPENFDA_DRUG_FIELDS`.
+    """openFDA `search` matching `drug_norm` as a phrase in ANY of `OPENFDA_DRUG_FIELDS`, restricted
+    to NDA and BLA applications (`OPENFDA_INNOVATOR_APPLICATIONS`):
+    `(field:"x" OR field:"x" ...) AND (application_number:NDA* application_number:BLA*)`.
 
-    The clauses are joined with an explicit ` OR `, not `+`. The HTTP client form-encodes the
+    The field clauses are joined with an explicit ` OR `, not `+`. The HTTP client form-encodes the
     value, so a space is sent as `+` (which openFDA decodes back to a space) while a literal `+`
     is sent as `%2B` and reaches the query parser as `+`, the "required clause" prefix. The old
     `field:"x"+field:"x"` form therefore required every field after the first to match, and an
-    application naming the drug in only one or two fields was missed. Changing this string
-    changes the request, so `stale_openfda_drug_queries` refuses records made with the old form.
+    application naming the drug in only one or two fields was missed. The value holds no literal
+    `+`; its parentheses, colons, quotes and `*` are percent-encoded and decoded by openFDA. The
+    parentheses keep `AND` from binding to the last field clause alone. Changing this string
+    changes the request, so `stale_openfda_drug_queries` refuses records made with an earlier form
+    (the cache key, `drug_query_key`, stays the same).
     """
     quoted = '"' + drug_norm.replace('"', ' ') + '"'
-    search = ' OR '.join(f'{field}:{quoted}' for field in OPENFDA_DRUG_FIELDS)
+    fields = ' OR '.join(f'{field}:{quoted}' for field in OPENFDA_DRUG_FIELDS)
+    search = f'({fields}) AND ({OPENFDA_INNOVATOR_APPLICATIONS})'
     return {'search': search, 'limit': '100'}
 
 

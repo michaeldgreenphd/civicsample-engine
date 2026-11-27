@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Hierarchical condition ontology for clinical trial categorization. Maps raw condition strings to Primary Category > Secondary Category using keyword/synonym matching.",
-    "last_updated": "2026-02-11"
+    "last_updated": "2026-11-27"
   },
   "categories": {
     "Cardiovascular": {
@@ -71,17 +71,18 @@
       "Colorectal Cancer": [
         "colorectal cancer", "colon cancer", "rectal cancer", "colorectal carcinoma",
         "colorectal neoplasm", "colon adenocarcinoma", "rectal adenocarcinoma",
-        "bowel cancer", "colorectal adenoma"
+        "bowel cancer", "colorectal adenoma", "mcrc"
       ],
       "Prostate Cancer": [
         "prostate cancer", "prostate neoplasm", "prostate carcinoma",
-        "prostatic neoplasm", "castration resistant prostate", "crpc",
+        "prostatic neoplasm", "castration resistant prostate", "crpc", "mcrpc",
         "prostate adenocarcinoma", "prostatic adenocarcinoma"
       ],
       "Hematologic Malignancy": [
         "leukemia", "lymphoma", "myeloma", "multiple myeloma",
         "acute myeloid leukemia", "aml", "acute lymphoblastic leukemia", "all",
         "chronic lymphocytic leukemia", "cll", "chronic myeloid leukemia", "cml",
+        "cmml",
         "hodgkin lymphoma", "non-hodgkin lymphoma", "nhl",
         "diffuse large b-cell lymphoma", "dlbcl", "follicular lymphoma",
         "mantle cell lymphoma", "myelodysplastic syndrome", "mds",
@@ -160,7 +161,7 @@
         "epilepsy", "seizure", "seizure disorder", "convulsion",
         "absence seizure", "tonic-clonic", "focal seizure",
         "lennox-gastaut", "dravet syndrome", "status epilepticus",
-        "refractory epilepsy", "temporal lobe epilepsy"
+        "refractory epilepsy", "temporal lobe epilepsy", "epilepsies"
       ],
       "Multiple Sclerosis": [
         "multiple sclerosis", "ms", "relapsing remitting", "rrms",
@@ -261,6 +262,7 @@
       ],
       "PTSD and Trauma": [
         "ptsd", "post-traumatic stress", "posttraumatic stress",
+        "post traumatic stress disorder",
         "trauma related", "complex ptsd", "acute stress disorder"
       ],
       "OCD and Related Disorders": [
@@ -443,7 +445,7 @@
         "gallbladder", "cholecystitis", "gallstone",
         "diverticulitis", "diverticulosis", "gastroparesis",
         "short bowel syndrome", "intestinal obstruction",
-        "gi", "digestive", "bowel"
+        "gi", "digestive", "bowel", "constipation"
       ]
     },
     "Kidney and Urological": {
