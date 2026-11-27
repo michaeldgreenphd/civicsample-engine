@@ -53,12 +53,47 @@ States: `not_searched`, `search_incomplete_or_blocked`, `document_unavailable`, 
 - **Cross-source discordance**: `published_results_while_ctgov_unreported`, `fda_cited_while_ctgov_unreported`, `ctgov_posted_no_linked_results_publication`, `concordant_multi_source_disclosed`, `unreported_across_completed_routes`, `coverage_incomplete_or_awaiting_review`. The "CT.gov unreported" states need the CT.gov results route at `no_candidate_in_completed_scope`; a record with `hasResults=true` but no `resultsSection` (`available_document_insufficient`) is ambiguous and stays `coverage_incomplete_or_awaiting_review`, and so is a record that omits `hasResults` or carries a non-boolean value: only an explicit `hasResults=false` is the registry's negative. The summary's `trials_ctgov_results_posted` (and the `ctgov_posted_trials` denominator) counts the registry fact, trials whose record generated the `ctgov_results` link, whatever a review says; the discordance flag `ctgov_results_posted` follows the reviewed route, so an `indeterminate` review sets it false.
 - **Sponsor rollups (`sponsors.json`)**: read-only `sponsors/` attribution providing both `current_owner` (`canonical`) and `as_registered` (`entity`) views while keeping `attributed`, `reviewed_excluded`, and `unreviewed` strictly disjoint and separate.
 
+## Audit holdout exclusion (`--holdout-index`)
+
+Every subcommand (`acquire`, `freeze-local`, `build`) and the site export require `--holdout-index PATH`,
+the site's outcomes index (`clinical-trial-populations` `data/outcomes/index.json`); there is no default,
+and a run without it exits with usage and writes nothing. A trial whose `in_audit` is true there is an
+audit holdout and is **excluded** (`src/holdout_exclusion.py`), never requested, read, counted or
+published:
+
+- `acquire` drops holdout IDs from `--nct-list` and every `--nct-id` (both are the universe, so both are
+  dropped and counted, never refused) before any request: no CT.gov, PubMed, Europe PMC or openFDA
+  request is sent for one, its registry references and drug terms are never planned, and nothing of it
+  enters the cache. A run whose every ID is a holdout is refused, and so is a cache whose raw logs
+  already hold a record logged for one (acquire into a new `--cache`): freezing would copy it.
+- `freeze-local` (and `build --records` seeding) drops a holdout's local record by its
+  `protocolSection.identificationModule.nctId` before its content is validated, compared or frozen, and
+  drops a holdout ID from `--nct-list`.
+- Both stamp the cache manifest with `holdout_exclusion` (index sha256 and counts, no IDs). `build`
+  carries that count forward, and refuses a cache stamped under another index. A cache frozen before
+  this change may still list and hold holdouts: `build` removes them from the frame (and counts them)
+  and drops their records by key as the archives are read, so it reads none of them (the archives are
+  still hashed whole; their `sources` meta in run.json counts only the records kept). A `build
+  --nct-list` subset selects from the frame, so a holdout ID in it is dropped without being counted
+  again. A curated `reviews.csv` or `documentary_statements.csv` row naming a holdout is refused.
+- The index is read strictly: rows missing, an `in_audit` that is not exactly true or false, an ID that
+  is not `^NCT[0-9]{8}$`, or a repeated ID or key refuse the run, with counts and positions, never an ID.
+
+`run.json` records `holdout_exclusion`: `rules_version`, `index_sha256` (of the index file's bytes),
+`holdouts_in_index` and `excluded_from_universe` (how many holdouts the run's universe held and lost).
+No ID and no path. The contract requires it; the site export refuses a build without a valid stamp, one
+whose `index_sha256` is not the given index's (the index changed since the build: rebuild), and one any
+of whose files names a holdout ID. **A build made before this change, or outside the repository, has no
+stamp and is refused by the exporter until it is rebuilt.** The site `run.json` carries the stamp.
+
 ## Running it
+
+`INDEX` below is the site's `data/outcomes/index.json` (`--holdout-index`, required by every command).
 
 ```bash
 # 1a. Live rate-limited (<= 2 req/s per host), resumable network acquisition + sha256 freeze:
 python3 scripts/build_drug_disclosure.py acquire \
-    --cache build/disclosure_cache --nct-list ids.txt
+    --cache build/disclosure_cache --nct-list ids.txt --holdout-index INDEX
 
 # 1b. Or freeze local CT.gov v2 study records (.json / .json.gz / .jsonl.gz) with zero network calls.
 #     The code cannot know when local files were obtained, so both stamps are required (no defaults):
@@ -67,7 +102,7 @@ python3 scripts/build_drug_disclosure.py acquire \
 #     and the build's as_of when --as-of is omitted). manifest frozen_at is the time of freezing.
 python3 scripts/build_drug_disclosure.py freeze-local \
     --records /path/to/ctgov_records --cache build/disclosure_cache \
-    --fetched-at 2026-11-13T22:32:29+00:00 --data-timestamp 2026-11-13T10:00:06
+    --fetched-at 2026-11-13T22:32:29+00:00 --data-timestamp 2026-11-13T10:00:06 --holdout-index INDEX
 
 # Freezing (either way) and loading refuse a cache in which any requested NCT ID has no CT.gov
 # study response record (a raw log acquired for another NCT list): run the ctgov stage for it first.
@@ -104,7 +139,7 @@ python3 scripts/build_drug_disclosure.py freeze-local \
 
 # 2. Offline deterministic build from frozen cache (runs contract check before writing):
 python3 scripts/build_drug_disclosure.py build \
-    --cache build/disclosure_cache --out build/disclosure --as-of 2026-11-01
+    --cache build/disclosure_cache --out build/disclosure --as-of 2026-11-01 --holdout-index INDEX
 # (build --records seeds an absent cache from local files like freeze-local, with the same required stamps.)
 # run.json sources.ctgov lists every CT.gov version record in the cache (`versions`: each acquisition
 # run observes /version before its first study request and after its last, never reusing an earlier
@@ -143,7 +178,7 @@ python3 scripts/build_drug_disclosure.py build \
 #    uncommitted_changes are null when git was missing or failed at build time (never false); such a
 #    build can be inspected locally, but the export refuses it. A dirty tree (true) is exported.
 python3 scripts/check_drug_disclosure_contract.py build/disclosure
-python3 scripts/export_drug_disclosure_site.py build/disclosure /tmp/site_disclosure
+python3 scripts/export_drug_disclosure_site.py build/disclosure /tmp/site_disclosure --holdout-index INDEX
 
 # 4. Offline test suite:
 pytest tests/disclosure -q
@@ -152,3 +187,5 @@ pytest tests/disclosure -q
 ## Compatibility
 
 New files only (`disclosure/`, three CLI scripts under `scripts/`, and `tests/disclosure/`). Zero existing tracked files, workflows, or published site contracts are modified.
+
+The audit holdout exclusion (`src/holdout_exclusion.py`) added a required `--holdout-index` to every build and export command, a required `holdout_exclusion` stamp to the build's `run.json` (the contract fails without it), and the same stamp to the site export's `run.json` (a new key; no site reader consumes this family's export yet). Builds made before it are refused by the exporter until rebuilt.

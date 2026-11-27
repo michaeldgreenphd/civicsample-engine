@@ -6,7 +6,9 @@ Usage:
 
 Exits 0 when every manifest hash, `run_identity`, count object, coverage cell, partial-date
 interval bound, one-sided (`bounded_above_only`) earliest-milestone bound, human-review boundary,
-and sponsor 3-state invariant passes; exits 1 otherwise.
+and sponsor 3-state invariant passes, and run.json carries a valid in_audit holdout exclusion stamp
+(`holdout_exclusion`: rules version, index sha256 and counts; `src/holdout_exclusion.py`); exits 1
+otherwise. A build made before the holdout exclusion has no stamp and fails.
 """
 from __future__ import annotations
 

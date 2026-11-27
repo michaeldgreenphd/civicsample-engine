@@ -2,7 +2,14 @@
 """Cut a verified drug-disclosure build down to lean static site files with atomic staging.
 
 Usage:
-  python3 scripts/export_drug_disclosure_site.py build/disclosure /tmp/site_disclosure
+  python3 scripts/export_drug_disclosure_site.py build/disclosure /tmp/site_disclosure \
+      --holdout-index ../clinical-trial-populations/data/outcomes/index.json
+
+`--holdout-index` (required) is the site's outcomes index. The export is refused, and the target left
+untouched, when the build's run.json has no valid `holdout_exclusion` stamp (a build made before the
+in_audit holdout exclusion, or without it), when the stamp's index sha256 is not this index's (the
+index changed since the build: rebuild), or when any file of the build names a holdout ID
+(`src/holdout_exclusion.py`). The site run.json carries the stamp (the index sha256 and counts only).
 
 Verifies the input build against its `run.json` sha256 manifest and producer contract before
 selecting any file. `summary.json` is carried forward unchanged apart from `run_id` so the site
@@ -31,6 +38,7 @@ if str(ROOT) not in sys.path:
 from disclosure import artifacts as ART  # noqa: E402
 from disclosure import coverage as C  # noqa: E402
 from disclosure import evidence as E  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 SITE_SCHEMA_VERSION = 1
 SITE_FILES = (
@@ -191,6 +199,9 @@ def select_site_files(build: dict[str, Any]) -> dict[str, Any]:
     if sum(summed_av.values()) != summary['denominators']['evidence_links']['n']:
         raise ValueError('trial evidence counts do not sum to summary.json evidence_links denominator')
 
+    holdout_problems = HX.stamp_problems(run.get(HX.STAMP_KEY))
+    if holdout_problems:
+        raise ValueError(holdout_problems[0])
     s_rid = site_run_id(run)
     stamp = {'schema_version': SITE_SCHEMA_VERSION, 'run_id': s_rid}
 
@@ -234,6 +245,7 @@ def select_site_files(build: dict[str, Any]) -> dict[str, Any]:
         'producer': run['producer'],
         'counting_units': run['counting_units'],
         'vocabularies': run['vocabularies'],
+        HX.STAMP_KEY: HX.stamp_for_site(run[HX.STAMP_KEY]),
         'sources': slim_sources,
         'curated': {
             name: {'n_rows': meta.get('n_rows'), 'sha256': meta.get('sha256')}
@@ -255,9 +267,18 @@ def select_site_files(build: dict[str, Any]) -> dict[str, Any]:
     return site_files
 
 
-def export_site(build_dir: Path, out_dir: Path) -> dict[str, Any]:
-    """Verify `build_dir`, stage site files beside `out_dir`, and atomically swap `out_dir`."""
-    site_files = select_site_files(read_verified_build(build_dir))
+def export_site(build_dir: Path, out_dir: Path, holdout_index: HX.HoldoutIndex) -> dict[str, Any]:
+    """Verify `build_dir`, stage site files beside `out_dir`, and atomically swap `out_dir`.
+
+    Before anything is staged, the build's `holdout_exclusion` stamp must be valid and made under
+    `holdout_index` (`HX.require_matching_stamp`), and no file of the build may name one of its
+    holdout IDs (`HX.refuse_holdout_mentions`, defence in depth); either refusal leaves `out_dir`
+    untouched.
+    """
+    build = read_verified_build(build_dir)
+    HX.require_matching_stamp(build['run.json'], holdout_index)
+    HX.refuse_holdout_mentions(build_dir, holdout_index)
+    site_files = select_site_files(build)
     expected_names = set(SITE_FILES) | {'run.json'}
     refusal = ART.replace_refusal(out_dir, expected_names, run_prefix='disclosure-')
     if refusal:
@@ -298,10 +319,14 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('build', type=Path, help='Verified drug-disclosure build directory')
     ap.add_argument('out', type=Path, help='Target site export directory (e.g. data/disclosure)')
+    ap.add_argument('--holdout-index', type=Path, required=True,
+                    help="The site's outcomes index (data/outcomes/index.json) the build must have been made "
+                    'under; required, there is no default')
     args = ap.parse_args(argv)
     try:
-        manifest = export_site(args.build, args.out)
-    except (OSError, ValueError) as exc:
+        holdout_index = HX.load_holdout_index(args.holdout_index)
+        manifest = export_site(args.build, args.out, holdout_index)
+    except (OSError, ValueError, HX.HoldoutIndexError) as exc:
         print(f'REFUSED: {exc}', file=sys.stderr)
         return 1
 

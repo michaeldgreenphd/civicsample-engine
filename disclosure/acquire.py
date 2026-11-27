@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Literal
 from urllib.parse import urlsplit
 
+from src.holdout_exclusion import HoldoutExclusion
+
 CTGOV_API = 'https://clinicaltrials.gov/api/v2'
 EPMC_REST = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search'
 NCBI_EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi'
@@ -1255,6 +1257,65 @@ def archive_path(cache_dir: Path, source: str) -> Path:
     return cache_dir / f'{source}.jsonl.gz'
 
 
+# ---------------------------------------------------------------- audit holdout exclusion
+
+def key_names_holdout(key: Any, exclusion: HoldoutExclusion) -> bool:
+    """Whether a cache record's key names an in_audit holdout trial.
+
+    Method: every per-trial record this family logs is keyed `<source>/<route>/<NCT id>`
+    (`ctgov/study/`, `literature/epmc_nct/`, `openfda/nct/`), so the key's last `/` segment is
+    compared with the holdout ids. Keys of shared records end in something else and never match:
+    a CT.gov version observation (`ctgov/version/...`), a PubMed lookup (`literature/pubmed_pmid/
+    <PMID>`) and an openFDA drug-term query (`openfda/drug/...`, read by its term and never by the
+    trials its tag lists).
+    """
+    return isinstance(key, str) and exclusion.is_holdout(key.rsplit('/', 1)[-1])
+
+
+def _tag_names_holdout(rec: Any, exclusion: HoldoutExclusion) -> bool:
+    """Whether a logged record's `tag` names a holdout (`nct_id`, or one of a drug query's `nct_ids`)."""
+    tag = rec.get('tag') if isinstance(rec, dict) else None
+    if not isinstance(tag, dict):
+        return False
+    named = [tag.get('nct_id')] + (tag['nct_ids'] if isinstance(tag.get('nct_ids'), list) else [])
+    return any(exclusion.is_holdout(n) for n in named)
+
+
+def holdout_records_in_raw_logs(cache_dir: Path, exclusion: HoldoutExclusion) -> int:
+    """How many records of `cache_dir`'s raw logs were logged for an in_audit holdout trial.
+
+    Method: each raw log is read (`ResponseLog`, which decodes every line to learn its key) and
+    a record counts when its key names a holdout (`key_names_holdout`) or its tag lists one (an
+    openFDA drug query planned from a holdout's interventions). Only keys and tags are compared;
+    nothing else of a record is read. A cache acquired before the exclusion may hold such records,
+    and `freeze` would copy them into its archives, so acquisition refuses that cache instead of
+    writing a holdout into it. A PubMed lookup made for a PMID that only a holdout's record cited
+    is keyed by the PMID and cannot be told from the others; the build never reads one, since it
+    looks PMIDs up only from the references of the trials it builds.
+    """
+    found = 0
+    for source in SOURCES:
+        rpath = raw_log_path(cache_dir, source)
+        if not rpath.exists():
+            continue
+        for key, rec in ResponseLog(rpath).records.items():
+            if key_names_holdout(key, exclusion) or _tag_names_holdout(rec, exclusion):
+                found += 1
+    return found
+
+
+def _local_study_nct_id(study: Any) -> Any:
+    """`protocolSection.identificationModule.nctId` of a local CT.gov study, read with type checks only.
+
+    Read before `ctgov_study_problem` looks at anything else of the record, so an in_audit holdout's
+    record is dropped by its id before its content is validated, compared or frozen. A record whose
+    id cannot be read this way is not dropped here: `ctgov_study_problem` refuses it by position.
+    """
+    ps = study.get('protocolSection') if isinstance(study, dict) else None
+    ident = ps.get('identificationModule') if isinstance(ps, dict) else None
+    return ident.get('nctId') if isinstance(ident, dict) else None
+
+
 def fetch_ctgov_studies(
     nct_ids: list[str],
     log: ResponseLog,
@@ -1562,8 +1623,17 @@ def ingest_local_ctgov_records(
     nct_ids: list[str] | None = None,
     limit: int | None = None,
     frozen_at: str | None = None,
+    exclusion: HoldoutExclusion | None = None,
 ) -> dict[str, Any]:
     """Freeze local CT.gov v2 study files into `cache_dir` with sha256 manifest verification.
+
+    `exclusion` (the CLI always passes one; `src/holdout_exclusion.py`) removes in_audit holdout
+    trials: each local file's bytes are read and decoded, but a study whose
+    `protocolSection.identificationModule.nctId` is a holdout is dropped by that id before anything
+    else of it is validated, compared or frozen, and a holdout id in `nct_ids` is dropped from the
+    allowlist. The universe is the allowlist when one is given, else the local records; holdouts
+    removed from it are counted and the count is stamped on the manifest (`freeze_cache`). Without
+    an allowlist, `limit` counts the first non-holdout trials.
 
     Makes zero network calls. `literature` and `openfda` archives remain absent so their coverage
     routes report `not_searched` rather than falsely claiming `no_candidate_in_completed_scope`.
@@ -1636,6 +1706,14 @@ def ingest_local_ctgov_records(
         raise ValueError(f'{source_path}: contains no JSON or JSONL files')
 
     wanted = set(nct_ids) if nct_ids is not None else None
+    if exclusion is not None and wanted is not None:
+        # The allowlist is the universe: its holdouts are counted and dropped before any file is read.
+        wanted = set(exclusion.exclude_ids(sorted(wanted)))
+        if not wanted:
+            raise ValueError(
+                f'{source_path}: every NCT ID in the list is an in_audit holdout trial, which is excluded; '
+                'nothing is left to freeze'
+            )
     studies: dict[str, dict[str, Any]] = {}
     first_seen_in: dict[str, Path] = {}
     # A trial appearing twice is kept only when every copy is byte-identical in canonical JSON (the
@@ -1656,6 +1734,12 @@ def ingest_local_ctgov_records(
     malformed: list[str] = []
     for file_path in files:
         for position, st in enumerate(_iter_studies_from_local_file(file_path), start=1):
+            # An in_audit holdout is dropped by its id before its record is validated, compared or kept.
+            # Without an allowlist the local records are the universe, so the holdout is counted there.
+            if exclusion is not None:
+                local_id = _local_study_nct_id(st)
+                if exclusion.exclude(local_id) if wanted is None else exclusion.is_holdout(local_id):
+                    continue
             problem = ctgov_study_problem(st)
             # A results date after the stated retrieval contradicts it (`ctgov_results_date_after`).
             late = ctgov_results_date_after(st, fetched_at) if problem is None else None
@@ -1690,6 +1774,11 @@ def ingest_local_ctgov_records(
         )
 
     requested = sorted(wanted) if wanted is not None else sorted(studies)
+    if not requested and exclusion is not None and exclusion.n_excluded:
+        raise ValueError(
+            f'{source_path}: every study record is an in_audit holdout trial, which is excluded; nothing is '
+            'left to freeze'
+        )
     if not requested:
         raise ValueError(f'{source_path}: yielded zero valid CT.gov v2 study records')
     # Absence from local files says nothing about ClinicalTrials.gov, so it is refused rather than
@@ -1734,7 +1823,7 @@ def ingest_local_ctgov_records(
             'body': st,
             'error': None,
         })
-    return freeze_cache(cache_dir, requested, frozen_at=frozen_at)
+    return freeze_cache(cache_dir, requested, frozen_at=frozen_at, exclusion=exclusion)
 
 
 # ---------------------------------------------------------------- freeze & strict verification
@@ -1835,6 +1924,7 @@ def freeze_cache(
     requested_nct_ids: Iterable[str],
     *,
     frozen_at: str | None = None,
+    exclusion: HoldoutExclusion | None = None,
 ) -> dict[str, Any]:
     """Freeze all acquired source logs under `cache_dir` and write `manifest.json` sidecar.
 
@@ -1842,10 +1932,31 @@ def freeze_cache(
     an HTTP 200 study response is a record for a different NCT ID, when the CT.gov version
     observations do not bracket the study answers (`ctgov_version_bracket_problem`), or when a
     drug-query record the build will read in raw/openfda.jsonl was made with an earlier query form.
+
+    With `exclusion` (acquisition and the local freeze always pass one), the requested IDs must
+    already be free of in_audit holdouts and the raw logs must hold no record logged for one
+    (`holdout_records_in_raw_logs`): freezing copies every raw record into the archives, so such a
+    cache is refused (acquire into a new cache) rather than a holdout written into it. The manifest
+    then carries the exclusion's stamp under `holdout_exclusion` (the index sha256 and counts, no
+    IDs), which the build carries forward (`load_frozen_cache`).
     """
     ids = sorted(set(requested_nct_ids))
     if not ids or any(not NCT_RE.match(i) for i in ids):
         raise ValueError('freeze_cache requires at least one valid NCT ID')
+    if exclusion is not None:
+        held = [i for i in ids if exclusion.is_holdout(i)]
+        if held:
+            raise ValueError(
+                f'freeze_cache was asked to freeze {len(held)} in_audit holdout trial(s); holdouts are removed '
+                'from the NCT list before acquisition and never frozen'
+            )
+        in_logs = holdout_records_in_raw_logs(cache_dir, exclusion)
+        if in_logs:
+            raise CacheIntegrityError(
+                f'{cache_dir}: the raw logs hold {in_logs} record(s) logged for in_audit holdout trials (an '
+                'acquisition made before holdout exclusion); freezing would copy them into the cache, so '
+                'acquire into a new --cache'
+            )
     # A pinned freeze time must have the form `load_frozen_cache` requires of it.
     if frozen_at is not None and (frozen_problem := timestamp_problem(frozen_at, 'frozen_at', offset='utc')):
         raise ValueError(frozen_problem)
@@ -1897,6 +2008,8 @@ def freeze_cache(
         'requested_nct_ids_sha256': sha256_bytes('\n'.join(ids).encode('utf-8')),
         'archives': archives_meta,
     }
+    if exclusion is not None:
+        manifest['holdout_exclusion'] = exclusion.stamp()
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=1, sort_keys=True) + '\n').encode('utf-8')
     write_atomic(cache_dir / 'manifest.json', manifest_bytes)
     return manifest
@@ -1905,8 +2018,18 @@ def freeze_cache(
 def _read_verified_archive(
     path: Path,
     expected_manifest_entry: dict[str, Any],
+    exclusion: HoldoutExclusion | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Verify `.jsonl.gz` against both its `.meta.json` sidecar and `manifest.json` entry.
+
+    With `exclusion`, a record whose key names an in_audit holdout trial (`key_names_holdout`) is
+    dropped as soon as its key is known: the archive's bytes are read and hashed whole (the
+    integrity check covers the file as frozen) and each line is decoded to learn its key, but no
+    other field of a holdout's record is looked at and it never reaches the `FrozenCache`. An
+    archive frozen before the exclusion can hold such records. When one was dropped, the sidecar's
+    `first_fetched_at`/`last_fetched_at` cannot be recomputed without reading the dropped records, so
+    the kept records' fetch times must lie within them, and the meta returned (published as run.json
+    `sources`) states `n_records` and the fetch times of the kept records only.
 
     The build reads the sidecar (`run.json` sources, the `as_of` fallback and bound), so every field
     it holds must equal the manifest entry, which `freeze_cache` writes from the same dict, and the
@@ -1947,6 +2070,7 @@ def _read_verified_archive(
         raise CacheIntegrityError(f'{path.name}: uncompressed sha256 mismatch against manifest/meta')
 
     records: dict[str, dict[str, Any]] = {}
+    dropped_keys: set[str] = set()
     lines = [ln.rstrip(b'\r') for ln in raw.split(b'\n') if ln.strip()]
     for line in lines:
         try:
@@ -1955,18 +2079,32 @@ def _read_verified_archive(
             raise CacheIntegrityError(f'{path.name}: malformed JSONL record ({exc})') from exc
         if not isinstance(rec, dict) or not isinstance(rec.get('key'), str):
             raise CacheIntegrityError(f'{path.name}: record lacks string key')
+        if exclusion is not None and key_names_holdout(rec['key'], exclusion):
+            # Only the key is read; the message names no key, since it would name the trial.
+            if rec['key'] in dropped_keys:
+                raise CacheIntegrityError(f'{path.name}: a holdout record key is repeated')
+            dropped_keys.add(rec['key'])
+            continue
         if rec['key'] in records:
             raise CacheIntegrityError(f"{path.name}: duplicate key {rec['key']!r}")
         if problem := timestamp_problem(rec.get('fetched_at'), 'fetched_at', offset='utc'):
             raise CacheIntegrityError(f"{path.name}: record {rec['key']!r}: {problem}")
         records[rec['key']] = rec
 
-    if len(records) != meta.get('n_records'):
+    if len(records) + len(dropped_keys) != meta.get('n_records'):
         raise CacheIntegrityError(
-            f"{path.name}: decoded {len(records)} record(s), expected {meta.get('n_records')}"
+            f"{path.name}: decoded {len(records) + len(dropped_keys)} record(s), expected {meta.get('n_records')}"
         )
     times = sorted(str(r['fetched_at']) for r in records.values() if r.get('fetched_at'))
     held_times = (('first_fetched_at', times[0] if times else None), ('last_fetched_at', times[-1] if times else None))
+    if dropped_keys:
+        stated = (meta.get('first_fetched_at'), meta.get('last_fetched_at'))
+        if times and not (isinstance(stated[0], str) and isinstance(stated[1], str)
+                          and stated[0] <= times[0] and times[-1] <= stated[1]):
+            raise CacheIntegrityError(
+                f'{path.name}: {meta_path.name} states fetch times {stated!r} that do not bound the archive records'
+            )
+        return records, {**meta, 'n_records': len(records), **dict(held_times)}
     for key, held in held_times:
         if meta.get(key) != held:
             raise CacheIntegrityError(
@@ -1976,13 +2114,24 @@ def _read_verified_archive(
     return records, meta
 
 
-def load_frozen_cache(cache_dir: Path) -> FrozenCache:
+def load_frozen_cache(cache_dir: Path, *, exclusion: HoldoutExclusion | None = None) -> FrozenCache:
     """Strictly verify and load a frozen disclosure cache for offline build execution.
 
     Besides the archive hashes, every NCT ID the manifest requests must have a CT.gov study
     response record (`ctgov_ids_without_study_record`), no HTTP 200 study response may be a record
     for a different NCT ID (`ctgov_studies_answered_for_another_trial`), and every openFDA drug-query
     record the build will read must have been made with today's query form (`stale_openfda_drug_queries`).
+
+    With `exclusion` (the build always passes one), in_audit holdout trials are excluded. A manifest
+    stamped by acquisition or a local freeze (`holdout_exclusion`) must have been made under the same
+    index, and its count of holdouts removed before they entered the cache is carried forward
+    (`HoldoutExclusion.carry_forward`). A cache frozen before the exclusion may still request and hold
+    holdouts: they are removed from the requested IDs (and counted) once the manifest's own checks
+    have passed, and their records are dropped by key as each archive is read
+    (`_read_verified_archive`), so the build reads none of them. The integrity checks still hash the
+    archives and re-encode the raw logs whole, holdout lines included, since they compare the files
+    as frozen; they compare bytes and keys and interpret no field. The returned manifest lists only
+    the kept IDs (its `requested_nct_ids_sha256` still identifies the frame as frozen).
     """
     if not cache_dir.is_dir():
         raise CacheIntegrityError(f'{cache_dir}: cache directory does not exist')
@@ -2012,8 +2161,9 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
                 f"cache: write this manifest's {n_ids} requested_nct_ids to a file, one per line, and run "
                 # The script is not executable (mode 0644), and the path is quoted for the shell.
                 f'`python3 scripts/build_drug_disclosure.py acquire --cache {shlex.quote(str(cache_dir))} '
-                '--nct-list FILE --stage ctgov --stage freeze` from the repository root to observe the CT.gov '
-                'version again and freeze it again'
+                '--nct-list FILE --holdout-index INDEX --stage ctgov --stage freeze` from the repository root, '
+                "INDEX being the site's data/outcomes/index.json, to observe the CT.gov version again and "
+                'freeze it again'
             )
         raise CacheIntegrityError(
             f'{manifest_path}: unsupported schema_version {found!r} (expected {CACHE_SCHEMA_VERSION}){hint}'
@@ -2032,6 +2182,18 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
         raise CacheIntegrityError('manifest.json: n_requested_nct_ids does not match requested_nct_ids')
     if sha256_bytes('\n'.join(ids).encode('utf-8')) != manifest.get('requested_nct_ids_sha256'):
         raise CacheIntegrityError('manifest.json: requested_nct_ids_sha256 mismatch')
+    if exclusion is not None:
+        if 'holdout_exclusion' in manifest:
+            exclusion.carry_forward(manifest['holdout_exclusion'], 'manifest.json holdout_exclusion')
+        kept = exclusion.exclude_ids(ids)
+        if not kept:
+            raise CacheIntegrityError(
+                'manifest.json: every requested NCT ID is an in_audit holdout trial, which is excluded; the '
+                'cache has nothing to build'
+            )
+        if len(kept) != len(ids):
+            manifest = {**manifest, 'requested_nct_ids': kept, 'n_requested_nct_ids': len(kept)}
+        ids = kept
 
     archives = manifest.get('archives')
     if not isinstance(archives, dict) or 'ctgov' not in archives:
@@ -2079,7 +2241,7 @@ def load_frozen_cache(cache_dir: Path) -> FrozenCache:
                 f"manifest.json: the {source} archive states frozen_at {entry.get('frozen_at')!r}, but the "
                 f"cache was frozen at {manifest.get('frozen_at')!r}"
             )
-        loaded[source] = _read_verified_archive(archive_path(cache_dir, source), entry)
+        loaded[source] = _read_verified_archive(archive_path(cache_dir, source), entry, exclusion)
 
     assert loaded['ctgov'][1] is not None
     unlooked = ctgov_ids_without_study_record(ids, loaded['ctgov'][0])
