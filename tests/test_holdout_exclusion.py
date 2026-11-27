@@ -155,6 +155,24 @@ def test_count_holdout_mentions_reads_gzip_and_whole_tokens_only() -> None:
     assert HX.count_holdout_mentions(b"nothing here", ids) == 0
 
 
+def test_count_holdout_mentions_reads_the_id_in_any_letter_case() -> None:
+    # Free text (a citation, an outcome description) can name a holdout in lower or mixed case.
+    ids = frozenset({H1})
+    lower, mixed = H1.lower(), "Nct" + H1[3:]
+    text = f'{{"citation": "see {lower}", "description": "extends {mixed}", "x": "x{lower}"}}'.encode()
+    assert HX.count_holdout_mentions(text, ids) == 2
+    assert HX.count_holdout_mentions(gzip.compress(text, mtime=0), ids) == 2
+    assert HX.count_holdout_mentions(KEPT.lower().encode(), ids) == 0
+
+
+def test_refuse_holdout_mentions_refuses_a_lower_case_mention(tmp_path: Path) -> None:
+    index = HX.load_holdout_index(FIXTURE)
+    (tmp_path / "records.json").write_text(f'{{"note": "follow-up of {H2.lower()}"}}', encoding="utf-8")
+    with pytest.raises(HX.HoldoutIndexError) as refused:
+        HX.refuse_holdout_mentions(tmp_path, index)
+    assert "records.json (1)" in str(refused.value) and H2.lower() not in str(refused.value).lower()
+
+
 def test_refuse_holdout_mentions_names_files_and_counts_not_ids(tmp_path: Path) -> None:
     index = HX.load_holdout_index(FIXTURE)
     (tmp_path / "summary.json").write_text('{"n": 1}')

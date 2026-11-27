@@ -58,8 +58,13 @@ STAMP_FIELDS: Final[tuple[str, ...]] = (
 
 _HEX64_RE: Final[re.Pattern[str]] = re.compile(r"[0-9a-f]{64}")
 # A trial id written anywhere in an output file: NCT and eight ASCII digits, not
-# inside a longer run of letters or digits (NCT123456789 is not NCT12345678).
-_NCT_TOKEN_RE: Final[re.Pattern[bytes]] = re.compile(rb"(?<![0-9A-Za-z])NCT[0-9]{8}(?![0-9])")
+# inside a longer run of letters or digits (NCT123456789 is not NCT12345678). The
+# prefix is matched in any letter case and the token upper-cased before it is
+# compared, as `_matches` reads a lower-cased id in an input and as the citation
+# verifier's embedded-id scan is case-insensitive: free text such as a citation or
+# an outcome description can name a holdout as `nct...` or `Nct...`, and the scan
+# is the exporters' last check that no build file names one.
+_NCT_TOKEN_RE: Final[re.Pattern[bytes]] = re.compile(rb"(?<![0-9A-Za-z])[Nn][Cc][Tt][0-9]{8}(?![0-9])")
 _GZIP_MAGIC: Final[bytes] = b"\x1f\x8b"
 
 
@@ -358,14 +363,18 @@ def require_matching_stamp(run: Any, index: HoldoutIndex) -> dict[str, Any]:
 
 
 def count_holdout_mentions(data: bytes, ids: frozenset[str]) -> int:
-    """How many NCT id tokens in ``data`` (gunzipped first when it is gzip) name a holdout."""
+    """How many NCT id tokens in ``data`` (gunzipped first when it is gzip) name a holdout.
+
+    A token is matched in any letter case (``_NCT_TOKEN_RE``) and upper-cased before it
+    is compared with ``ids``, so ``nct99777701`` counts as ``NCT99777701``.
+    """
     if data[:2] == _GZIP_MAGIC:
         try:
             data = gzip.decompress(data)
         except (OSError, EOFError) as exc:
             raise HoldoutIndexError(f"a gzip file of the build cannot be decompressed for the holdout "
                                     f"scan ({type(exc).__name__})") from exc
-    return sum(1 for token in _NCT_TOKEN_RE.findall(data) if token.decode("ascii") in ids)
+    return sum(1 for token in _NCT_TOKEN_RE.findall(data) if token.decode("ascii").upper() in ids)
 
 
 def refuse_holdout_mentions(build_dir: Path, index: HoldoutIndex) -> None:
