@@ -75,8 +75,9 @@ EXITS   1 when the push must not happen:
             core, studies_tab and detail files and run.json), or a file, its
             summary, its sex/gender pair or its methods text carries another
             run's stamps or a wrong header (src/dataset_folder.py).
-        Size over the site's budgets only warns: 20 MiB a part today, and the
-        optional per-class budgets for the studies_tab and detail files. That
+        Size over the site's budgets only warns: the per-part and total
+        ceilings in its tests/data_budget.json, and the optional per-class
+        budgets for the studies_tab and detail files. That
         is the owner's policy: block missing fields; for size, warn until a
         hard limit, and the hard limits are the ones a push or a Pages deploy
         would hit.
@@ -110,8 +111,8 @@ from src import first_view as fv  # noqa: E402
 from src import site_layout as sl  # noqa: E402
 
 # GitHub rejects a push with a file over 100 MiB. (The site serves its parts
-# from GitHub Pages; the 20 MiB per-part figure in its budget is a budget,
-# and only warns.)
+# from GitHub Pages; the per-part ceiling in its tests/data_budget.json is a
+# budget, and only warns.)
 PART_HARD_LIMIT_BYTES = 100 * 1024 * 1024
 # GitHub Pages refuses to publish a site larger than 1 GB.
 TREE_HARD_LIMIT_BYTES = 1_000_000_000
