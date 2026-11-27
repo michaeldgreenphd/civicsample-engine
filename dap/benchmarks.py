@@ -42,7 +42,7 @@ from sponsors import adapter, audit_states, sponsor_roles
 from src import condition_mesh as cmesh
 from src import ethnicity_extractor, race_extractor
 from src import full_records
-from src.holdout_exclusion import HoldoutExclusion
+from src.holdout_exclusion import HoldoutExclusion, record_trial_id
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
 from src import table_selection
@@ -1856,21 +1856,19 @@ def search_page_problem(container: dict[str, Any]) -> str | None:
     return None
 
 
-def record_nct_id(record: Any) -> Any:
-    """A study record's trial id, read with type checks only: a weekly record's ``nct_id``, else
-    ``protocolSection.identificationModule.nctId``; ``None`` when neither can be read.
+def record_nct_id(record: Any, where: str = "a study record") -> Any:
+    """A study record's trial id, read with type checks only (``src.holdout_exclusion.record_trial_id``).
+
+    Every place a record can carry its id is read: a weekly record's top-level ``nct_id`` (or
+    ``nctId``) and ``protocolSection.identificationModule.nctId``, which ``_extract_core_metadata``
+    reads. A record whose ids there disagree is refused, so a clean or blank top-level id cannot
+    keep a record whose protocol id is a holdout. ``None`` when the record carries no id.
 
     Used to drop an in_audit holdout by its id before anything else of its record is read
     (``drop_holdouts``). A record whose id cannot be read this way is kept for the record checks,
     which refuse it.
     """
-    if not isinstance(record, dict):
-        return None
-    if isinstance(record.get("nct_id"), str):
-        return record["nct_id"]
-    ps = record.get("protocolSection")
-    ident = ps.get("identificationModule") if isinstance(ps, dict) else None
-    return ident.get("nctId") if isinstance(ident, dict) else None
+    return record_trial_id(record, where)
 
 
 def drop_holdouts(records: list[Any], exclusion: HoldoutExclusion | None) -> list[Any]:
@@ -1884,7 +1882,8 @@ def drop_holdouts(records: list[Any], exclusion: HoldoutExclusion | None) -> lis
     """
     if exclusion is None:
         return records
-    return [r for r in records if not exclusion.exclude(record_nct_id(r))]
+    return [r for pos, r in enumerate(records, 1)
+            if not exclusion.exclude(record_nct_id(r, f"study record {pos}"))]
 
 
 def _response_log_studies(

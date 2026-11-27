@@ -249,3 +249,16 @@ def test_export_refuses_a_build_whose_stopped_trial_rows_name_a_holdout(
     err = capsys.readouterr().err
     assert "trials.jsonl.gz (1)" in err and HOLDOUT not in err
     assert not site.exists()
+
+
+def test_a_study_whose_protocol_id_is_a_holdout_is_dropped_or_refused_whatever_its_top_level_id() -> None:
+    # The metrics read protocolSection.identificationModule.nctId, so the drop must too.
+    kept = make_ctgov_study("NCT99777703")
+    blank_top = {**_holdout_study(), "nct_id": ""}
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))
+    assert build_feasibility_benchmarks.drop_holdouts([blank_top, kept], exclusion) == [kept]
+    assert exclusion.n_excluded == 1
+    clean_top = {**_holdout_study(), "nct_id": "NCT99777703"}
+    with pytest.raises(HX.HoldoutIndexError) as refused:
+        build_feasibility_benchmarks.drop_holdouts([kept, clean_top], HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX)))
+    assert "study 2" in str(refused.value) and HOLDOUT not in str(refused.value)

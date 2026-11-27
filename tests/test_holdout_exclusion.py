@@ -173,6 +173,44 @@ def test_refuse_holdout_mentions_refuses_a_lower_case_mention(tmp_path: Path) ->
     assert "records.json (1)" in str(refused.value) and H2.lower() not in str(refused.value).lower()
 
 
+def _record(top: Any = None, proto: Any = None, key: str = "nct_id") -> dict[str, Any]:
+    record: dict[str, Any] = {}
+    if top is not None:
+        record[key] = top
+    if proto is not None:
+        record["protocolSection"] = {"identificationModule": {"nctId": proto}}
+    return record
+
+
+def test_record_trial_id_reads_every_place_a_record_carries_its_id() -> None:
+    assert HX.record_trial_id(_record(top=KEPT)) == KEPT
+    assert HX.record_trial_id(_record(top=KEPT, key="nctId")) == KEPT
+    assert HX.record_trial_id(_record(proto=H1)) == H1
+    assert HX.record_trial_id(_record(top=H1, proto=H1)) == H1
+    # The same id written with padding or in lower case agrees, as _matches reads it.
+    assert HX.record_trial_id(_record(top=f" {H1.lower()} ", proto=H1)) == f" {H1.lower()} "
+    # A blank top-level id is absent, so the protocol id decides.
+    assert HX.record_trial_id(_record(top="", proto=H1)) == H1
+    assert HX.record_trial_id(_record(top="   ", proto=H1)) == H1
+    assert HX.record_trial_id({}) is None and HX.record_trial_id(["not", "a", "record"]) is None
+    assert HX.record_trial_id(_record(top=123)) == 123
+
+
+def test_record_trial_id_refuses_ids_that_disagree_without_naming_them() -> None:
+    for record in (_record(top=KEPT, proto=H1), _record(top=H1, proto=KEPT),
+                   _record(top=KEPT, proto=H1, key="nctId"), _record(top=123, proto=H1)):
+        with pytest.raises(HX.HoldoutIndexError) as refused:
+            HX.record_trial_id(record, "study record 7")
+        message = str(refused.value)
+        assert "study record 7" in message and "disagree" in message
+        assert H1 not in message and KEPT not in message
+    both = {"nct_id": KEPT, "nctId": H1}
+    with pytest.raises(HX.HoldoutIndexError):
+        HX.record_trial_id(both)
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(FIXTURE))
+    assert exclusion.trial_id_of(_record(top="", proto=H1)) == H1
+
+
 def test_refuse_holdout_mentions_names_files_and_counts_not_ids(tmp_path: Path) -> None:
     index = HX.load_holdout_index(FIXTURE)
     (tmp_path / "summary.json").write_text('{"n": 1}')

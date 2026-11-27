@@ -206,6 +206,52 @@ def _matches(value: Any, ids: frozenset[str]) -> bool:
     return text in ids or text.strip().upper() in ids
 
 
+def _present_id(value: Any) -> bool:
+    """Whether ``value`` is a trial id a record carries: anything but None and a blank string.
+
+    A blank string is read as absent, as the history parser (``raw.get('nct_id') or ...``) and
+    ``outcomes.comparability.nct_id_of`` read it, so a blank top-level id cannot stand in front of
+    the id in ``protocolSection``.
+    """
+    return value is not None and not (isinstance(value, str) and not value.strip())
+
+
+def _id_key(value: Any) -> tuple[str, str]:
+    """A comparison key for one carried id: a str as ``_matches`` normalises it, anything else by type."""
+    if isinstance(value, str):
+        return ("str", str.__str__(value).strip().upper())
+    return (type(value).__name__, repr(value))
+
+
+def record_trial_id(record: Any, where: str = "a study record") -> Any:
+    """The one trial id a study record carries, read with type checks only; None when it carries none.
+
+    Method: every place a study record can carry its id is read: a weekly or flattened record's
+    top-level ``nct_id`` or ``nctId``, and a CT.gov API v2 record's
+    ``protocolSection.identificationModule.nctId``. None and blank strings are absent. When the
+    present values disagree (compared as ``_matches`` compares: surrounding whitespace removed,
+    letters upper-cased; a non-str by type and value), the record is refused
+    (``HoldoutIndexError``): a loader that reads one place and an extractor that reads another
+    would take it for different trials, and a clean id in one place could hide a holdout in the
+    other. Otherwise the first present value is returned as it is, for the caller to test with
+    ``HoldoutExclusion.exclude`` or ``is_holdout``; a non-str is returned too, and the caller's
+    record checks refuse it. The message names the place, never an id.
+    """
+    if not isinstance(record, dict):
+        return None
+    ps = record.get("protocolSection")
+    ident = ps.get("identificationModule") if isinstance(ps, dict) else None
+    carried = [record.get("nct_id"), record.get("nctId"),
+               ident.get("nctId") if isinstance(ident, dict) else None]
+    present = [value for value in carried if _present_id(value)]
+    if len({_id_key(value) for value in present}) > 1:
+        raise HoldoutIndexError(f"{where} carries {len(present)} trial ids that disagree (top-level "
+                                "nct_id/nctId and protocolSection.identificationModule.nctId); the "
+                                "loader and the extractor would read different trials, so the input is "
+                                "refused")
+    return present[0] if present else None
+
+
 class HoldoutExclusion:
     """One build's exclusion of the holdouts of a HoldoutIndex from its input universe.
 
@@ -237,6 +283,11 @@ class HoldoutExclusion:
     def is_holdout(self, nct_id: Any) -> bool:
         """True when ``nct_id`` names a holdout. Records nothing."""
         return _matches(nct_id, self.index.ids)
+
+    @staticmethod
+    def trial_id_of(record: Any, where: str = "a study record") -> Any:
+        """``record_trial_id`` for a caller that holds an exclusion but does not import this module."""
+        return record_trial_id(record, where)
 
     def exclude(self, nct_id: Any) -> bool:
         """True (and counted once) when ``nct_id`` is a holdout of the universe; the caller drops it."""

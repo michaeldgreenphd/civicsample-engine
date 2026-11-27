@@ -283,3 +283,21 @@ def test_export_refuses_a_build_whose_records_name_a_holdout(
     err = capsys.readouterr().err
     assert 'name an in_audit holdout trial' in err and HOLDOUT not in err
     assert not site.exists()
+
+
+def test_a_history_line_whose_protocol_id_is_a_holdout_is_dropped_or_refused(tmp_path: Path) -> None:
+    # A clean top-level nct_id must not file a holdout's protocolSection under another trial.
+    kept = C.nct_id_of(_sample_studies()[0])
+    holdout_section = {'identificationModule': {'nctId': HOLDOUT}}
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))
+    blank = tmp_path / 'blank.jsonl.gz'
+    blank.write_bytes(gzip.compress((json.dumps({'nct_id': '', 'protocolSection': holdout_section}) + '\n').encode(),
+                                    mtime=0))
+    snapshots, _meta = OH.load_history_archive(blank, exclusion)
+    assert snapshots == {}
+    clash = tmp_path / 'clash.jsonl.gz'
+    clash.write_bytes(gzip.compress((json.dumps({'nct_id': kept, 'protocolSection': holdout_section}) + '\n').encode(),
+                                    mtime=0))
+    with pytest.raises(HX.HoldoutIndexError) as refused:
+        OH.load_history_archive(clash, exclusion)
+    assert 'clash.jsonl.gz line 1' in str(refused.value) and HOLDOUT not in str(refused.value)

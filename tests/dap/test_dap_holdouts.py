@@ -276,3 +276,19 @@ def test_export_refuses_a_build_whose_output_names_a_holdout(
     err = capsys.readouterr().err
     assert "name an in_audit holdout trial" in err and HOLDOUT not in err
     assert sorted(p.name for p in site.iterdir()) == ["keep.txt"]
+
+
+def test_a_record_whose_protocol_id_is_a_holdout_is_dropped_or_refused_whatever_its_top_level_id() -> None:
+    # _extract_core_metadata reads protocolSection.identificationModule.nctId, so the drop must too.
+    cohort = fx.build_fictional_cohort()
+    clean_id = cohort[0]["protocolSection"]["identificationModule"]["nctId"]
+    blank_top = {**_as_holdout(cohort[0]), "nct_id": ""}
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))
+    assert benchmarks.drop_holdouts([blank_top, *cohort[1:]], exclusion) == cohort[1:]
+    assert exclusion.n_excluded == 1
+    clean_top = {**_as_holdout(cohort[0]), "nct_id": clean_id}
+    with pytest.raises(HX.HoldoutIndexError) as refused:
+        benchmarks.drop_holdouts([*cohort[1:], clean_top], HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX)))
+    assert f"study record {len(cohort)}" in str(refused.value) and HOLDOUT not in str(refused.value)
+    agreeing = {**cohort[0], "nct_id": clean_id}
+    assert benchmarks.drop_holdouts([agreeing], HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))) == [agreeing]

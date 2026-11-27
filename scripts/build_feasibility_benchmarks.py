@@ -262,7 +262,11 @@ def drop_holdouts(studies: list[Any], exclusion: HX.HoldoutExclusion | None) -> 
     """
     if exclusion is None:
         return studies
-    return [s for s in studies if not exclusion.exclude(_study_nct_id(s) if isinstance(s, dict) else None)]
+    # Every place a study carries its id is read (`HX.record_trial_id`): the metrics read
+    # `protocolSection.identificationModule.nctId`, so a clean or blank top-level `nct_id` must not
+    # decide alone; a study whose ids disagree is refused.
+    return [s for pos, s in enumerate(studies, 1)
+            if not exclusion.exclude(HX.record_trial_id(s, f"study {pos}"))]
 
 
 def _refuse_only_holdouts(kept: list[Any], exclusion: HX.HoldoutExclusion | None, source: str) -> None:

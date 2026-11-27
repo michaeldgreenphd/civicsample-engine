@@ -429,15 +429,6 @@ def _parse_history_entry(raw: dict[str, Any], line_no: int) -> tuple[str, dict[s
     }
 
 
-def _history_line_nct_id(raw: dict[str, Any]) -> Any:
-    """A history line's trial id where `_parse_history_entry` reads it, with type checks only."""
-    nct = raw.get('nct_id') or raw.get('nctId')
-    if nct is None and isinstance(raw.get('protocolSection'), dict):
-        ident = raw['protocolSection'].get('identificationModule')
-        nct = ident.get('nctId') if isinstance(ident, dict) else None
-    return nct
-
-
 def load_history_archive(
     path: Path, exclusion: HoldoutExclusion | None = None
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
@@ -505,7 +496,11 @@ def load_history_archive(
             raise HistoryArchiveError(f'{path.name} line {line_no}: invalid JSON ({exc})') from exc
         if not isinstance(obj, dict):
             raise HistoryArchiveError(f'{path.name} line {line_no}: expected JSON object')
-        if exclusion is not None and exclusion.is_holdout(_history_line_nct_id(obj)):
+        # Every place the line carries its id is read (`exclusion.trial_id_of`), not only the one
+        # `_parse_history_entry` keys it by: a clean top-level id must not file a holdout's
+        # `protocolSection` under another trial, and a line whose ids disagree is refused.
+        if exclusion is not None and exclusion.is_holdout(
+                exclusion.trial_id_of(obj, f'{path.name} line {line_no}')):
             continue
         nct, snap = _parse_history_entry(obj, line_no)
         if nct in snapshots:
