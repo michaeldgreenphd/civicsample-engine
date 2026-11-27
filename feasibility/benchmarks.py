@@ -455,6 +455,48 @@ def compute_percentiles(
     return out
 
 
+# The duration window each accrual `calendar_window_used` rests on (`metrics.compute_accrual_metrics`).
+ACCRUAL_WINDOW_DURATIONS: dict[str, str] = {
+    "start_to_primary_completion": "primary_completion",
+    "start_to_study_completion": "study_completion",
+}
+
+
+def _rests_on_untyped_date(duration: dict[str, Any]) -> bool:
+    """Whether a realized duration window has a start or end date struct with no registry `type`."""
+    return duration["eligible_for_realized_duration"] is True and (
+        duration["start_date_type"] is None or duration["end_date_type"] is None
+    )
+
+
+def untyped_window_counts(trials: Sequence[dict[str, Any]]) -> dict[str, int]:
+    """Count the realized windows, per benchmark, that rest on a date struct with no registry `type`.
+
+    A realized API v2 window whose start or end date carries no `type` stays realized (owner decision
+    on #107): CT.gov holds no type on many older start dates, and withholding those windows would tilt
+    every duration and accrual benchmark toward recent trials. These counts are published beside the
+    benchmarks so the share resting on an untyped date stays visible. In the 3,371 stored unprojected
+    trials, 922 of 3,243 realized start-to-primary-completion windows and 894 of 3,161
+    start-to-completion windows rest on one. Weekly-projection windows are never realized without both
+    types (`metrics.compute_duration`), so a weekly build counts 0. Accrual velocity rests on the
+    window its `calendar_window_used` names.
+    """
+    return {
+        "primary_duration": sum(
+            1 for t in trials if _rests_on_untyped_date(t["durations"]["primary_completion"])
+        ),
+        "study_duration": sum(1 for t in trials if _rests_on_untyped_date(t["durations"]["study_completion"])),
+        "actual_participants_per_month": sum(
+            1
+            for t in trials
+            if t["accrual"]["rate_status"] == "computed"
+            and _rests_on_untyped_date(
+                t["durations"][ACCRUAL_WINDOW_DURATIONS[t["accrual"]["calendar_window_used"]]]
+            )
+        ),
+    }
+
+
 def summarize_cell(
     trials: Sequence[dict[str, Any]],
     *,
@@ -597,6 +639,7 @@ def summarize_cell(
         "realized_primary_duration_days": prim_days_pct,
         "realized_primary_duration_months": prim_months_pct,
         "realized_study_duration_months": study_months_pct,
+        "realized_windows_on_untyped_dates": untyped_window_counts(trials),
         "actual_participants_per_month": accrual_pct,
         "actual_participants_per_listed_facility": facility_pct,
         "period1_completion_rate": retention_pct,
