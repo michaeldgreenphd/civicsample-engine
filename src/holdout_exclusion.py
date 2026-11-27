@@ -57,8 +57,15 @@ STAMP_FIELDS: Final[tuple[str, ...]] = (
 )
 
 _HEX64_RE: Final[re.Pattern[str]] = re.compile(r"[0-9a-f]{64}")
-# A trial id written anywhere in an output file: NCT and eight ASCII digits, not
-# inside a longer run of letters or digits (NCT123456789 is not NCT12345678). The
+# A trial id written anywhere in an output file: NCT and eight ASCII digits. A
+# letter or digit just before the token, or a ninth digit just after it, means no
+# match: XNCT12345678 is not a mention, and NCT123456789 names a different trial.
+# A letter just after the eight digits does not end the match, on purpose:
+# NCT12345678A and run-together free text such as "of NCT12345678and the" still
+# count as mentions of NCT12345678. A false match only refuses an export, so a
+# person looks at the build, while a missed mention would publish a holdout; the
+# citation verifier's embedded-id scan (`nct[0-9]{7,10}`) likewise sets no
+# boundary after the digits. The
 # prefix is matched in any letter case and the token upper-cased before it is
 # compared, as `_matches` reads a lower-cased id in an input and as the citation
 # verifier's embedded-id scan is case-insensitive: free text such as a citation or

@@ -155,6 +155,15 @@ def test_count_holdout_mentions_reads_gzip_and_whole_tokens_only() -> None:
     assert HX.count_holdout_mentions(b"nothing here", ids) == 0
 
 
+def test_count_holdout_mentions_counts_an_id_followed_by_a_letter() -> None:
+    # A trailing letter does not end the token on purpose: a run-together mention still counts,
+    # while a ninth digit (another trial's id) or a letter or digit before it does not.
+    ids = frozenset({H1})
+    assert HX.count_holdout_mentions(f"code {H1}A".encode(), ids) == 1
+    assert HX.count_holdout_mentions(f"a follow-up of {H1}and the extension".encode(), ids) == 1
+    assert HX.count_holdout_mentions(f"{H1}0 and X{H1} and 9{H1}".encode(), ids) == 0
+
+
 def test_count_holdout_mentions_reads_the_id_in_any_letter_case() -> None:
     # Free text (a citation, an outcome description) can name a holdout in lower or mixed case.
     ids = frozenset({H1})
