@@ -10,10 +10,14 @@ unreviewed AI output until a person reviews it.
 The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
 (`scripts/build_outcomes_shards.py`), so they need a checkout that carries
-all four: M1 and M2 are on `main` (merged in `2932cac`, PR #112, and
-`3f1bcb9`, PR #111), and M4 and M3 are on their branches (m3 contains m4).
-They were checked against m1 `4defbef` (the branch head merged in
-`2932cac`), m2 `b9a2ebc`, m4 `d68652a` and m3 `e2a8c21`.
+all four. M1, M2 and M4 are on `main` (merged in `2932cac`, PR #112;
+`3f1bcb9`, PR #111; and `c144f12`, PR #113). M3 is on its unmerged branch,
+`antigravity/m3-outcomes-bundles`, which contains `main` as of `c144f12`, so
+a checkout of that branch carries all four. Later `main` commits, such as PR
+#118's M2 units fix, are not on it. The commands were checked against m1
+`4defbef` (the branch head merged in `2932cac`), m2 `b9a2ebc`, m4 `d68652a`
+and m3 `e2a8c21`; m3 `51f2ba8` differs from `e2a8c21` only by that merge of
+`main`, and M3's source and test files are identical.
 
 ## 0. Before anything runs
 
@@ -25,9 +29,10 @@ They were checked against m1 `4defbef` (the branch head merged in
   branch is the investigator's decision: do not modify, move or delete it,
   and do not push census output to it or to any other public branch.
 - Nothing on a public branch is private or offline.
-- Publishing census output on the site is the investigator's decision. M3
-  (outcomes bundles) stays on its unmerged branch until that decision is
-  made, and a bundle built from it stays on local disk.
+- Census output is not published on the site: on 2026-11-27 the
+  investigator decided to keep it off the site for now, and publishing it
+  later is also the investigator's decision. M3 (outcomes bundles) stays on
+  its unmerged branch, and a bundle built from it stays on local disk.
 - The `in_audit` holdout trials (those whose `in_audit` is true in the site's
   `data/outcomes/index.json`) are never opened, fetched, parsed, searched,
   quoted, cached or recorded. When you need to compare ids with the holdout
@@ -564,8 +569,8 @@ Never write the combined corpus into a tracked file or a public branch.
 
 ### Step 6: outcomes bundles (M3; unmerged, local only)
 
-M3 is held on its branch until the investigator decides whether census output
-is published. A bundle built from it is a local file tree, gitignored on the
+M3 is held on its branch, because census output is not published on the site
+(section 0.1). A bundle built from it is a local file tree, gitignored on the
 m3 branch, and nothing copies it to the site:
 
 ```bash

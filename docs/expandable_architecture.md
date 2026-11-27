@@ -5,8 +5,8 @@ work beyond the industry Phase 3 outcomes cohort: to trials sponsored by the
 NIH, other US federal agencies, NCTN cooperative groups, academic medical
 centers and non-profit foundations, and to any trial with posted protocol or
 statistical analysis plan documents. The modules arrived together in PR #97
-(head `dc38220`) and were split into separate branches. M1 and M2 have since
-merged to `main` (PRs #112 and #111); m4 and m3 are still on their branches.
+(head `dc38220`) and were split into separate branches. M1, M2 and M4 have
+since merged to `main` (PRs #112, #111 and #113); M3 is held on its branch.
 None of them runs on a schedule, and none publishes anything to the site.
 
 [census_iteration_playbook.md](census_iteration_playbook.md) is the operating
@@ -22,18 +22,22 @@ merged on its own; M3 is the exception, because it imports M4.
 |---|---|---|---|---|
 | `antigravity/m1-document-indexer` | `aa14a2d` | `src/document_indexer.py`, `scripts/index_trial_documents.py`, `tests/test_document_indexer.py`, `.gitignore` (the three M1 data paths) | none | merged to `main` (PR #112, merge commit `2932cac`; branch head `4defbef`) |
 | `antigravity/m2-population-ecosystem` | `aa14a2d` | `src/analysis_population_parser.py`, `sponsors/ecosystem.py`, `src/holdout_guard.py` (the holdout guard both modules import), `sponsors/ecosystem_rules.csv`, `tests/test_analysis_population_parser.py`, `tests/sponsors/test_ecosystem.py`, `tests/sponsors/expected_ecosystem_counts.json`, `tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv` | none (it uses the existing `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`) | merged to `main` (PR #111, merge commit `3f1bcb9`; branch head `b9a2ebc`) |
-| `antigravity/m4-citation-verifier` | `aa14a2d` | `src/citation_verifier.py`, `src/longitudinal_provenance.py`, `scripts/verify_and_plan_census_batch.py`, `tests/test_citation_verifier.py`, `tests/test_longitudinal_provenance.py`, `tests/test_verify_and_plan_census_batch.py` | none | for review |
-| `antigravity/m3-outcomes-bundles` | stacked on m4 (it merges the m4 branch) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths), plus m4's files | `src.citation_verifier` (M4) only | **held unmerged** until the investigator decides whether census output is published |
+| `antigravity/m4-citation-verifier` | `aa14a2d` | `src/citation_verifier.py`, `src/longitudinal_provenance.py`, `scripts/verify_and_plan_census_batch.py`, `tests/test_citation_verifier.py`, `tests/test_longitudinal_provenance.py`, `tests/test_verify_and_plan_census_batch.py` | none | merged to `main` (PR #113, merge commit `c144f12`; branch head `d68652a`) |
+| `antigravity/m3-outcomes-bundles` | `main` (it merged the m4 branch at `d68652a`, then `main` at `c144f12`) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths) | `src.citation_verifier` (M4) only | **held unmerged**: census output is not published on the site (section 7) |
 | `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
 
 The revisions read for this document were m1 `4defbef` (merged to `main` in
-`2932cac`), m2 `b9a2ebc` (merged to `main` in `3f1bcb9`), m4 `d68652a` and m3
-`e2a8c21` (which contains m4 at `d68652a`, merged in as `e2a8c21`). A later
-commit on any of these branches, or on `main`, can change a detail stated
-here, so re-check a detail against the code before relying on it.
+`2932cac`), m2 `b9a2ebc` (merged to `main` in `3f1bcb9`), m4 `d68652a`
+(merged to `main` in `c144f12`), m3 `e2a8c21` and `51f2ba8`, and `main` at
+`03fd911`. m3 `51f2ba8` merges `main` at `c144f12` into `e2a8c21`; of M3's
+files only `.gitignore` changed (it gains M1's lines), and
+`src/outcomes_layout.py`, `scripts/build_outcomes_shards.py` and
+`tests/test_outcomes_layout.py` are identical, so a statement below made at
+`e2a8c21` also holds at `51f2ba8`. A later commit on any of these branches,
+or on `main`, can change a detail stated here, so re-check a detail against
+the code before relying on it.
 
-Because m3 contains m4, it cannot be merged before m4. Merging is the owner's
-decision.
+M4, which M3 imports, is on `main`. Merging M3 is the owner's decision.
 
 ## 2. Boundaries with the weekly pipeline
 
@@ -348,9 +352,11 @@ under an in-scope id is read under that id.
   it.
 - Nothing on a public branch is private or offline. Census rows on a public
   branch are published, whether or not the site shows them.
-- Publishing census output on the site is also the investigator's decision.
-  No module writes to the site, and m3 stays unmerged until that decision is
-  made.
+- Census output is not published on the site. On 2026-11-27 the
+  investigator decided to keep it off the site for now; publishing it later
+  is also the investigator's decision. No module writes to the site, and m3
+  stays unmerged. This does not make the census private: its rows stay
+  publicly readable on the branch above for as long as that branch exists.
 - New census work (plans, reports, new rows, merged corpora) goes to a
   gitignored local path, never to a tracked file and never to a public
   branch; the playbook sets that path up and checks it.
@@ -438,7 +444,8 @@ under an in-scope id is read under that id.
 ### M2: analysis-population parser and sponsor ecosystem
 
 **Parser (`src/analysis_population_parser.py`).** `PARSER_RULES_VERSION` is
-`analysis_pop@2026-11-24.v1`; `VOCABULARY_SHA256` is computed by
+`analysis_pop@2026-11-24.v2` on `main` (`v1` at `b9a2ebc`; PR #118 bumped
+it); `VOCABULARY_SHA256` is computed by
 `compute_vocabulary_sha256` over `VOCABULARY_RULES`. `POPULATION_TAXONOMY`
 has nine classes that are never merged: `itt`, `modified_itt`,
 `full_analysis_set`, `per_protocol`, `evaluable`, `safety`, `other_stated`,
@@ -447,12 +454,15 @@ has nine classes that are never merged: `itt`, `modified_itt`,
 never 0. A measure with no measure-level denominators whose classes carry a
 `Participants` denominator in some classes and none in others has
 `denom_status` `class_level_incomplete`, `denom_source` `"none"` and no
-`overall_participants_analyzed` (run on a fictional measure). The same gap
-on the units side is open: a measure whose classes carry a unit
-denominator (such as `Eyes`) in some classes and none in others is still
-reported from the classes that have one, with `denom_status` `present` and
-`overall_units_analyzed` taken from those classes (run on a fictional
-measure at `b9a2ebc`).
+`overall_participants_analyzed` (run on a fictional measure). The units
+side follows the same rule since PR #118 (`b77314f`): a measure whose
+classes carry a unit denominator (such as `Eyes`) in some classes and none
+in others has `units_denom_status` `class_level_incomplete` and no
+`overall_units_analyzed`, and `structural_checks` holds `units_denom_status`
+to `DENOM_STATUS_LEVELS` (`units_denom_status_in_vocabulary`). At
+`b9a2ebc`, before that fix, such a measure was reported from the classes
+that have a unit denominator, with `units_denom_status` `present`. The
+fictional-measure tests that PR added pass at `main` `03fd911`.
 `arm_started_minus_analysed` is stored for audit and has no path into
 `classify_population_description`. Entry points:
 `classify_population_description`, `normalize_population_text`,
