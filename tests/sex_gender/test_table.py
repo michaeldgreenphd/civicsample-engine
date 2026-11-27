@@ -21,6 +21,8 @@ import inspect
 import json
 import os
 import sys
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -430,7 +432,7 @@ def test_write_back_requires_one_to_one_coverage(tmp_path):
     assert meta["written_back"]["coverage_ok"] is False and meta["written_back"]["records_without_row"] == ["B"]
 
 
-def _multiclass_measure(title, classes):
+def _multiclass_measure(title: str, classes: list[tuple[str, list[tuple[str, int]]]]) -> dict[str, Any]:
     """A standard-layout sex measure posting several classes (age bands, periods), each with the
     same Female/Male rows; the parser reads the first and sets flag_multiclass_timepoint."""
     return {"title": title, "paramType": "COUNT_OF_PARTICIPANTS", "unitOfMeasure": "Participants",
@@ -439,7 +441,7 @@ def _multiclass_measure(title, classes):
                 for ct, cats in classes]}
 
 
-def test_sex_primary_measure_rebuilt_from_a_raw_record_equals_the_extractions():
+def test_sex_primary_measure_rebuilt_from_a_raw_record_equals_the_extractions() -> None:
     """The write-back rebuilds the field from the retained raw record; for the same trial it must be
     the field src/extract_all.py wrote from the study."""
     studies = [
@@ -459,7 +461,7 @@ def test_sex_primary_measure_rebuilt_from_a_raw_record_equals_the_extractions():
     assert multi["flag_multiclass_timepoint"] is True and multi["n_total_parsed"] == 50.0
 
 
-def test_write_back_rebuilds_sex_primary_measure_with_the_row(tmp_path):
+def test_write_back_rebuilds_sex_primary_measure_with_the_row(tmp_path: Path) -> None:
     """A re-parse rewrites the sex_gender row; the record's sex_primary_measure, read from the same
     measures, is rebuilt with it. On 63974e0 the write-back replaced the row only, so a field from
     an older parser rules version stayed beside the new row. A record from before the field
