@@ -218,15 +218,33 @@ refused, never reported as `meta_verified`.
 
 ### CLI Entry Points
 
+Every build and site export requires `--holdout-index PATH`, the site's outcomes index
+(`clinical-trial-populations` `data/outcomes/index.json`; no default: a run without it exits with usage
+and writes nothing). A trial whose `in_audit` is true there is an audit holdout and is **excluded**
+(`src/holdout_exclusion.py`). It is dropped, and counted, from `--nct-list`, `--exclude-list` and the
+input's frame before anything is fetched (no request names it) or read; a records-directory file, an
+archive line, a responses-cache line (from its requested ids and returned studies) and a
+`--history-archive` line of one are dropped by id as soon as they are decoded, before any per-trial
+parse, so no record, count or scope list includes it. An archive frozen before this change may still
+list and hold holdouts: they leave its frame, and run.json `acquisition` counts only the trials built
+(its hashes still identify the archive file). The index is read strictly (rows missing, an `in_audit`
+that is not exactly true or false, an id that is not `^NCT[0-9]{8}$`, or a repeated id or key refuse the
+run, with counts and positions, never an id). `run.json` `holdout_exclusion` records `rules_version`,
+`index_sha256`, `holdouts_in_index` and `excluded_from_universe` (no id, no path); the contract requires
+it, and the exporter refuses a build without a valid stamp, one made under another index (the index
+changed since the build: rebuild) and one any of whose files names a holdout id. **A build made before
+this change, or outside the repository, has no stamp and is refused by the exporter until it is
+rebuilt.** The site `run.json` carries the stamp. Below, `INDEX` is `../clinical-trial-populations/data/outcomes/index.json`.
+
 ```bash
 # Build from stored per-trial .json.gz / .json records directory (the files record no retrieval
 # date, so --snapshot-date, the date they were retrieved, is required):
 python3 scripts/build_outcomes_comparability.py --records-dir PATH --snapshot-date YYYY-MM-DD \
-    --out build/outcomes_comparability
+    --out build/outcomes_comparability --holdout-index INDEX
 
 # Build from a frozen sha256-verified .jsonl.gz archive (+ optional historical snapshots):
 python3 scripts/build_outcomes_comparability.py --archive PATH \
-    [--history-archive hist.jsonl.gz] --out build/outcomes_comparability
+    [--history-archive hist.jsonl.gz] --out build/outcomes_comparability --holdout-index INDEX
 
 # Build from a frozen CT.gov HTTP responses cache (retrieval date from its lines' fetched_at;
 # --snapshot-date YYYY-MM-DD is required when any line lacks one). Each response line must record
@@ -234,14 +252,17 @@ python3 scripts/build_outcomes_comparability.py --archive PATH \
 # a requested trial no line returned stays in the frame as a not_retrieved record with its reason;
 # a study its line did not request, a trial returned twice, or a response line naming no requested
 # id is refused:
-python3 scripts/build_outcomes_comparability.py --responses-cache PATH --out build/outcomes_comparability
+python3 scripts/build_outcomes_comparability.py --responses-cache PATH --out build/outcomes_comparability \
+    --holdout-index INDEX
 
 # Fetch full CT.gov API v2 records (<= 2 req/s) and build:
-python3 scripts/build_outcomes_comparability.py --fetch --nct-list ids.txt --out build/outcomes_comparability
+python3 scripts/build_outcomes_comparability.py --fetch --nct-list ids.txt --out build/outcomes_comparability \
+    --holdout-index INDEX
 
 # Producer contract verification:
 python3 scripts/check_outcomes_comparability_contract.py build/outcomes_comparability
 
 # Atomic site export (verifies build sha256s + contract before staging):
-python3 scripts/export_outcomes_comparability_site.py build/outcomes_comparability /tmp/site_comparability
+python3 scripts/export_outcomes_comparability_site.py build/outcomes_comparability /tmp/site_comparability \
+    --holdout-index INDEX
 ```

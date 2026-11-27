@@ -35,6 +35,7 @@ if str(ROOT) not in sys.path:
 from outcomes import acquire  # noqa: E402
 from outcomes import comparability as C  # noqa: E402
 from outcomes import outcome_history as OH  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 SCHEMA_VERSION = 1
 API = 'https://clinicaltrials.gov/api/v2'
@@ -287,14 +288,28 @@ def read_archive_meta(path: Path) -> dict[str, Any]:
     return meta
 
 
-def iter_archive(path: Path) -> Iterator[Any]:
+def iter_archive(
+    path: Path, exclusion: HX.HoldoutExclusion | None = None, dropped: list[int] | None = None
+) -> Iterator[Any]:
+    """Each line of a frozen archive, decoded (an unreadable line as its exception).
+
+    With `exclusion`, a line whose `protocolSection.identificationModule.nctId` is an in_audit holdout
+    is dropped once decoded, before `build_records` inspects it, and counted as removed from the
+    universe (`src/holdout_exclusion.py`); `dropped[0]`, when given, counts the lines dropped.
+    """
     with gzip.open(path, 'rb') as fh:
         for line in fh:
             if line.strip():
                 try:
-                    yield json.loads(line)
+                    obj = json.loads(line)
                 except ValueError as exc:
                     yield exc
+                    continue
+                if exclusion is not None and exclusion.exclude(C.nct_id_of(obj)):
+                    if dropped is not None:
+                        dropped[0] += 1
+                    continue
+                yield obj
 
 
 def _unwrap_study_object(obj: Any) -> dict[str, Any]:
@@ -314,13 +329,19 @@ def _unwrap_study_object(obj: Any) -> dict[str, Any]:
     return obj
 
 
-def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def load_records_dir(
+    records_dir: Path, snapshot_date: str | None = None, exclusion: HX.HoldoutExclusion | None = None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load stored per-trial CT.gov v2 `.json.gz` / `.json` files from `records_dir` deterministically.
 
     `snapshot_date` (the date the records were retrieved) is required: a directory of study files
     carries no acquisition metadata, and a record's lastUpdatePostDate / resultsFirstPostDate say
     when the registry published it, not when it was retrieved, so neither can stand in for
     `acquisition.retrieved_at` or the run-id date.
+
+    With `exclusion` (the CLI always passes one), each file is read and decoded, and a study whose id
+    is an in_audit holdout is dropped (and counted) before anything else of it is read: the frame,
+    counts and `sha256_uncompressed` cover the other studies only.
     """
     if not records_dir.is_dir():
         raise BuildError(f'{records_dir}: not a directory')
@@ -347,12 +368,16 @@ def load_records_dir(records_dir: Path, snapshot_date: str | None = None) -> tup
         except (OSError, EOFError, ValueError, BuildError) as exc:
             raise BuildError(f'{p.name}: could not read study JSON ({exc})') from exc
         nct = C.nct_id_of(study)
+        if exclusion is not None and exclusion.exclude(nct):
+            continue
         if not nct or not NCT.match(nct):
             raise BuildError(f'{p.name}: missing or invalid protocolSection.identificationModule.nctId')
         if nct in studies_by_nct:
             raise BuildError(f'{p.name}: duplicate study record for {nct}')
         studies_by_nct[nct] = study
 
+    if not studies_by_nct and exclusion is not None and exclusion.n_excluded:
+        raise BuildError(f'{records_dir}: every study record is an in_audit holdout trial, which is excluded')
     ordered_ids = sorted(studies_by_nct)
     ordered_studies = [studies_by_nct[n] for n in ordered_ids]
     canonical_bytes = acquire.encode(ordered_studies)
@@ -414,7 +439,9 @@ def _cache_line_requested_ids(outer: dict[str, Any], where: str) -> list[str]:
     return requested
 
 
-def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def load_responses_cache(
+    cache_path: Path, snapshot_date: str | None = None, exclusion: HX.HoldoutExclusion | None = None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load CT.gov API v2 studies from a frozen HTTP batch responses `.jsonl.gz` cache.
 
     The retrieval date is `snapshot_date` when given, else the latest `fetched_at` of the cache's
@@ -430,6 +457,11 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
     than a response) requested nothing and contributes exactly the study it holds. A response line
     that was never written to the cache cannot be detected from the cache alone; `--nct-list`
     states the intended frame independently, and its ids missing here become retrieval failures.
+
+    With `exclusion` (the CLI always passes one), in_audit holdouts are removed by id once each line
+    is decoded: from a response line's requested ids, from the studies it returned, and a bare study
+    line of one is dropped before any other field of it (its `fetched_at` included) is read. Each is
+    counted as removed from the universe; the frame, `not_retrieved` and the counts hold none.
     """
     if not cache_path.is_file():
         raise BuildError(f'{cache_path}: responses cache file does not exist')
@@ -449,6 +481,9 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
                     continue
                 line = raw_line.decode('utf-8')
                 outer = json.loads(line)
+                if (exclusion is not None and isinstance(outer, dict) and 'body' not in outer
+                        and exclusion.exclude(C.nct_id_of(outer))):
+                    continue  # a bare study line of a holdout: nothing else of it is read
                 fetched_date = (
                     calendar_date(outer['fetched_at'][:10])
                     if isinstance(outer, dict) and isinstance(outer.get('fetched_at'), str) else None
@@ -464,6 +499,9 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
                     line_requested = _cache_line_requested_ids(outer, where)
                     body = json.loads(outer['body']) if isinstance(outer['body'], str) else outer['body']
                     batch_studies = body.get('studies') or [] if isinstance(body, dict) else []
+                    if exclusion is not None:
+                        line_requested = exclusion.exclude_ids(line_requested)
+                        batch_studies = [b for b in batch_studies if not exclusion.exclude(C.nct_id_of(b))]
                     # Same wording as `fetch` for an id the registry did not return. A response that
                     # carries nextPageToken may hold the trial on a page the cache does not have, so
                     # the reason says so instead of asserting that the registry returned nothing.
@@ -500,6 +538,8 @@ def load_responses_cache(cache_path: Path, snapshot_date: str | None = None) -> 
     except (OSError, EOFError, ValueError) as exc:
         raise BuildError(f'{cache_path.name}: could not read responses cache ({exc})') from exc
 
+    if not studies_by_nct and exclusion is not None and exclusion.n_excluded:
+        raise BuildError(f'{cache_path.name}: every study is an in_audit holdout trial, which is excluded')
     if not studies_by_nct:
         raise BuildError(f'{cache_path.name}: contains no studies')
 
@@ -1322,8 +1362,19 @@ def build(
     scope: dict[str, Any],
     history_archive_meta: dict[str, Any] | None = None,
     generated_at: str | None = None,
+    *,
+    holdout_exclusion: dict[str, Any],
 ) -> dict[str, Any]:
-    """Assemble `{filename: parsed_object}` for the comparability artifact family (`schema_version = 1`)."""
+    """Assemble `{filename: parsed_object}` for the comparability artifact family (`schema_version = 1`).
+
+    `holdout_exclusion` is the stamp of the in_audit holdout exclusion the inputs were loaded with
+    (`HoldoutExclusion.stamp()`, `src/holdout_exclusion.py`); the holdouts are already gone from
+    `records`, `acquisition` and `scope`. It is recorded in run.json as given (rules version, index
+    sha256, counts; no id) and enters the run identity.
+    """
+    stamp_issues = HX.stamp_problems(holdout_exclusion)
+    if stamp_issues:
+        raise BuildError(stamp_issues[0])
     retrieved_at = str(acquisition.get('retrieved_at') or '')[:10]
     if calendar_date(retrieved_at) is None:
         raise BuildError('acquisition record has no real YYYY-MM-DD retrieved_at date')
@@ -1357,6 +1408,7 @@ def build(
         'manual_run': True,
         'scheduled': False,
         'producer': producer,
+        HX.STAMP_KEY: dict(holdout_exclusion),
         'method': {
             'version': C.METHOD_VERSION,
             'outcome_history_version': OH.METHOD_VERSION,
@@ -1459,6 +1511,9 @@ def check(files: dict[str, Any]) -> list[str]:
         p.append(f'run.json producer commit {prod_commit!r} is neither null nor a git commit id')
     if not (prod_dirty is None or isinstance(prod_dirty, bool)) or (prod_commit is None and prod_dirty is not None):
         p.append(f'run.json producer uncommitted_changes {prod_dirty!r} is not verifiable without a commit')
+    # The in_audit holdout exclusion stamp (src/holdout_exclusion.py): without a valid one the build was
+    # made before the exclusion or without --holdout-index.
+    p.extend(HX.stamp_problems(run.get(HX.STAMP_KEY)))
     acq = run.get('acquisition') or {}
     if not HEX64.match(str(acq.get('sha256_uncompressed') or '')):
         p.append('run.json acquisition lacks a 64-hex sha256_uncompressed')

@@ -23,7 +23,10 @@ import json
 import re
 import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # annotation only: the exclusion object is handed in by the caller
+    from src.holdout_exclusion import HoldoutExclusion
 
 METHOD_VERSION = 'outcome-history-1'
 
@@ -426,13 +429,30 @@ def _parse_history_entry(raw: dict[str, Any], line_no: int) -> tuple[str, dict[s
     }
 
 
-def load_history_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+def _history_line_nct_id(raw: dict[str, Any]) -> Any:
+    """A history line's trial id where `_parse_history_entry` reads it, with type checks only."""
+    nct = raw.get('nct_id') or raw.get('nctId')
+    if nct is None and isinstance(raw.get('protocolSection'), dict):
+        ident = raw['protocolSection'].get('identificationModule')
+        nct = ident.get('nctId') if isinstance(ident, dict) else None
+    return nct
+
+
+def load_history_archive(
+    path: Path, exclusion: HoldoutExclusion | None = None
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Load a frozen `jsonl.gz` archive of historical study-version snapshots keyed by `nct_id`.
 
     If `<archive>.meta.json` is present alongside `path`, it must carry both `sha256_uncompressed`
     and `n_records`, and both must match the archive before `meta_verified` is set. Raises
     `HistoryArchiveError` on corrupt gzip, malformed JSON, duplicate `nct_id` rows, a sidecar that is
     not an object or lacks either field, or a metadata checksum or count mismatch.
+
+    With `exclusion` (`src/holdout_exclusion.py`; the comparability CLI always passes one), a line
+    whose trial id is an in_audit holdout is dropped as soon as the line is decoded, before its
+    snapshot is parsed (`_parse_history_entry`). The archive's bytes are still hashed and its lines
+    counted against the sidecar whole; `n_records` counts the snapshots kept. The archive is a
+    per-trial input beside the universe, so a dropped line is not counted as a removal again.
     """
     if not path.is_file():
         raise HistoryArchiveError(f'{path}: historical archive file does not exist')
@@ -485,6 +505,8 @@ def load_history_archive(path: Path) -> tuple[dict[str, dict[str, Any]], dict[st
             raise HistoryArchiveError(f'{path.name} line {line_no}: invalid JSON ({exc})') from exc
         if not isinstance(obj, dict):
             raise HistoryArchiveError(f'{path.name} line {line_no}: expected JSON object')
+        if exclusion is not None and exclusion.is_holdout(_history_line_nct_id(obj)):
+            continue
         nct, snap = _parse_history_entry(obj, line_no)
         if nct in snapshots:
             raise HistoryArchiveError(f'{path.name} line {line_no}: duplicate historical snapshot for {nct}')

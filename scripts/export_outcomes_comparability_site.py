@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Export a verified outcomes-comparability build to site files with atomic staging.
 
-  python3 scripts/export_outcomes_comparability_site.py BUILD_DIR OUT_DIR
+  python3 scripts/export_outcomes_comparability_site.py BUILD_DIR OUT_DIR --holdout-index INDEX
+
+`--holdout-index` (required) is the site's outcomes index (data/outcomes/index.json). The export is
+refused, `OUT_DIR` untouched, when the build's run.json has no valid `holdout_exclusion` stamp (a build
+made before the in_audit holdout exclusion), when the stamp's index sha256 is not this index's (the
+index changed since the build: rebuild), or when any file of the build, `records.json` included, names a
+holdout id (`src/holdout_exclusion.py`). The site `run.json` carries the stamp (sha256 and counts only).
 
 Reads only `BUILD_DIR` (offline; zero network calls), verifies every file listed in
 `BUILD_DIR/run.json` by raw byte SHA-256 and runs `comparability_build.check()` before selecting
@@ -33,6 +39,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from outcomes import comparability_build as B  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 SITE_SCHEMA_VERSION = 1
 BUILD_SCHEMA_VERSION = 1
@@ -169,6 +176,9 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
             f"build producer commit {prod.get('commit')!r} with uncommitted_changes {prod.get('uncommitted_changes')!r}: "
             'a build whose producing commit or working-tree state is unknown is not exported'
         )
+    holdout_problems = HX.stamp_problems(run.get(HX.STAMP_KEY))
+    if holdout_problems:
+        raise ValueError(holdout_problems[0])
     summary = build['summary.json']
     records_map = build['records.json']['records']
 
@@ -213,6 +223,7 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
         'generated_at': run['generated_at'],
         'scheduled': False,
         'producer': run['producer'],
+        HX.STAMP_KEY: HX.stamp_for_site(run[HX.STAMP_KEY]),
         'method': run['method'],
         'acquisition': {
             k: run['acquisition'].get(k)
@@ -232,10 +243,18 @@ def select(build: dict[str, Any]) -> dict[str, Any]:
     return site_files
 
 
-def export(build_dir: Path, out_dir: Path) -> dict[str, Any]:
+def export(build_dir: Path, out_dir: Path, holdout_index: HX.HoldoutIndex) -> dict[str, Any]:
     """Verify `build_dir`, stage site files into a temporary sibling of `out_dir`, verify written
-    SHA-256 digests, and swap into `out_dir` atomically."""
-    files = select(read_build(build_dir))
+    SHA-256 digests, and swap into `out_dir` atomically.
+
+    Before anything is staged, the build's `holdout_exclusion` stamp must be valid and made under
+    `holdout_index` (`HX.require_matching_stamp`) and no file of the build may name one of its holdout
+    ids (`HX.refuse_holdout_mentions`, defence in depth); either refusal leaves `out_dir` untouched.
+    """
+    build = read_build(build_dir)
+    HX.require_matching_stamp(build['run.json'], holdout_index)
+    HX.refuse_holdout_mentions(build_dir, holdout_index)
+    files = select(build)
     out_dir = out_dir.resolve()
     expected_names = set(SITE_FILES) | {'run.json'}
     refusal = B.replace_refusal(out_dir, expected_names, id_prefix='outcomes-comparability-')
@@ -290,10 +309,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('build', type=Path, help='directory written by scripts/build_outcomes_comparability.py')
     ap.add_argument('out', type=Path, help='destination site directory, e.g. data/outcomes_comparability')
+    ap.add_argument('--holdout-index', type=Path, required=True,
+                    help="the site's outcomes index (data/outcomes/index.json) the build must have been made under; required")
     args = ap.parse_args(argv)
     try:
-        manifest = export(args.build, args.out)
-    except ValueError as err:
+        holdout_index = HX.load_holdout_index(args.holdout_index)
+        manifest = export(args.build, args.out, holdout_index)
+    except (ValueError, HX.HoldoutIndexError) as err:
         print(f'REFUSED: {err}', file=sys.stderr)
         return 1
     total = 0

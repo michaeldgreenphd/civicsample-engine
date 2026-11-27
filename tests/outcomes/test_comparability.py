@@ -31,6 +31,24 @@ from outcomes import outcome_history as OH  # noqa: E402
 import build_outcomes_comparability  # noqa: E402
 import check_outcomes_comparability_contract  # noqa: E402
 import export_outcomes_comparability_site  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
+
+# The fictional holdout index every CLI call is given (tests/fixtures/holdout_index/index.json). Its
+# holdouts (NCT99777701, NCT99777702) are in no comparability fixture, so the exclusion removes
+# nothing and every existing expectation holds; test_comparability_holdouts.py adds a holdout.
+HOLDOUT_INDEX = ROOT / 'tests' / 'fixtures' / 'holdout_index' / 'index.json'
+HOLDOUT_ARGS = ['--holdout-index', str(HOLDOUT_INDEX)]
+
+
+def _no_holdout_stamp() -> dict[str, Any]:
+    """The stamp of an exclusion under the fixture index that removed nothing."""
+    exclusion = HX.HoldoutExclusion(HX.load_holdout_index(HOLDOUT_INDEX))
+    exclusion.exclude_ids([])
+    return exclusion.stamp()
+
+
+HOLDOUT_STAMP = _no_holdout_stamp()
+HOLDOUT = HX.load_holdout_index(HOLDOUT_INDEX)
 
 
 # ---------------------------------------------------------------- fictional CT.gov v2 builders
@@ -688,6 +706,7 @@ def _family(
     return B.build(
         recs, probs, acq, prod, {'source': 'archive'}, B.build_scope(ids, ids), history_meta,
         generated_at='2026-11-15T12:00:00+00:00',
+        holdout_exclusion=HOLDOUT_STAMP,
     )
 
 
@@ -1071,8 +1090,8 @@ def test_run_identity_is_deterministic_content_sensitive_and_summary_counts_comp
     scope = B.build_scope(ids, ids)
     recs, probs = B.build_records(studies, ids, {})
 
-    fam_t1 = B.build(recs, probs, acq, prod, {'source': 'archive'}, scope, generated_at='2026-11-15T12:00:00+00:00')
-    fam_t2 = B.build(recs, probs, acq, prod, {'source': 'archive'}, scope, generated_at='2030-05-01T00:00:00+00:00')
+    fam_t1 = B.build(recs, probs, acq, prod, {'source': 'archive'}, scope, generated_at='2026-11-15T12:00:00+00:00', holdout_exclusion=HOLDOUT_STAMP)
+    fam_t2 = B.build(recs, probs, acq, prod, {'source': 'archive'}, scope, generated_at='2030-05-01T00:00:00+00:00', holdout_exclusion=HOLDOUT_STAMP)
     assert B.check(fam_t1) == []
     assert fam_t1['run.json']['run_id'] == fam_t2['run.json']['run_id']
 
@@ -1080,6 +1099,7 @@ def test_run_identity_is_deterministic_content_sensitive_and_summary_counts_comp
     fam_dirty = B.build(
         recs, probs, acq, {**prod, 'source_sha256': '2' * 64}, {'source': 'archive'}, scope,
         generated_at='2026-11-15T12:00:00+00:00',
+        holdout_exclusion=HOLDOUT_STAMP,
     )
     assert fam_dirty['run.json']['run_id'] != fam_t1['run.json']['run_id']
 
@@ -1102,7 +1122,7 @@ def test_contract_checker_refuses_tampering_private_keys_and_broken_invariants(t
 
     out_dir = tmp_path / 'build_out'
     assert build_outcomes_comparability.main(
-        ['--records-dir', str(rec_dir), '--snapshot-date', '2026-11-15', '--out', str(out_dir)]
+        ['--records-dir', str(rec_dir), '--snapshot-date', '2026-11-15', '--out', str(out_dir), *HOLDOUT_ARGS]
     ) == 0
     assert check_outcomes_comparability_contract.main([str(out_dir)]) == 0
 
@@ -1216,6 +1236,7 @@ def test_cli_archive_exclude_history_and_site_export_atomic_staging(
         '--exclude-reason', 'no posted results in cohort rehearsal',
         '--history-archive', str(hist_path),
         '--out', str(build_dir),
+        *HOLDOUT_ARGS,
     ]) == 0
     assert check_outcomes_comparability_contract.main([str(build_dir)]) == 0
 
@@ -1230,7 +1251,7 @@ def test_cli_archive_exclude_history_and_site_export_atomic_staging(
 
     # Site export succeeds and verifies all file SHA-256 digests
     site_dir = tmp_path / 'site_comparability'
-    assert export_outcomes_comparability_site.main([str(build_dir), str(site_dir)]) == 0
+    assert export_outcomes_comparability_site.main([str(build_dir), str(site_dir), *HOLDOUT_ARGS]) == 0
     site_run = json.loads((site_dir / 'run.json').read_text(encoding='utf-8'))
     assert site_run['build_run_id'] == built['run.json']['run_id']
     for fname, digest in site_run['files'].items():
@@ -1240,7 +1261,7 @@ def test_cli_archive_exclude_history_and_site_export_atomic_staging(
     unrelated = tmp_path / 'unrelated'
     unrelated.mkdir()
     (unrelated / 'important.txt').write_text('keep me', encoding='utf-8')
-    assert export_outcomes_comparability_site.main([str(build_dir), str(unrelated)]) == 1
+    assert export_outcomes_comparability_site.main([str(build_dir), str(unrelated), *HOLDOUT_ARGS]) == 1
     assert (unrelated / 'important.txt').read_text(encoding='utf-8') == 'keep me'
 
     # Simulated OSError during final swap restores previous exported site directory intact
@@ -1254,13 +1275,13 @@ def test_cli_archive_exclude_history_and_site_export_atomic_staging(
 
     monkeypatch.setattr(Path, 'rename', fail_stage_rename)
     with pytest.raises(OSError, match='simulated disk rename failure'):
-        export_outcomes_comparability_site.export(build_dir, site_dir)
+        export_outcomes_comparability_site.export(build_dir, site_dir, holdout_index=HOLDOUT)
     monkeypatch.undo()
     assert {p.name: p.read_bytes() for p in site_dir.iterdir()} == before_bytes
 
     # Tampering with build_dir causes site export to refuse non-zero
     (build_dir / 'summary.json').write_bytes(b'{"tampered":true}\n')
-    assert export_outcomes_comparability_site.main([str(build_dir), str(tmp_path / 'site2')]) == 1
+    assert export_outcomes_comparability_site.main([str(build_dir), str(tmp_path / 'site2'), *HOLDOUT_ARGS]) == 1
 
 
 class _FakeResp:
@@ -1420,7 +1441,7 @@ def test_local_sources_never_take_the_retrieval_date_from_registry_dates(tmp_pat
         (rec_dir / f'{C.nct_id_of(s)}.json').write_text(json.dumps(s), encoding='utf-8')
     with pytest.raises(B.BuildError, match='--snapshot-date'):
         B.load_records_dir(rec_dir)
-    assert build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--out', str(tmp_path / 'o1')]) == 1
+    assert build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--out', str(tmp_path / 'o1'), *HOLDOUT_ARGS]) == 1
     assert not (tmp_path / 'o1').exists()
     assert B.load_records_dir(rec_dir, snapshot_date='2026-11-20')[1]['retrieved_at'] == '2026-11-20T00:00:00+00:00'
 
@@ -1455,7 +1476,7 @@ def test_acquisition_dates_must_be_real_calendar_dates(tmp_path: Path) -> None:
         with pytest.raises(B.BuildError, match='real YYYY-MM-DD calendar date'):
             B.load_records_dir(rec_dir, snapshot_date=bad)
     with pytest.raises(SystemExit):
-        build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--snapshot-date', '2026-99-99', '--out', str(tmp_path / 'o')])
+        build_outcomes_comparability.main(['--records-dir', str(rec_dir), '--snapshot-date', '2026-99-99', '--out', str(tmp_path / 'o'), *HOLDOUT_ARGS])
     assert not (tmp_path / 'o').exists()
 
     cache = tmp_path / 'resp.jsonl.gz'
@@ -1471,7 +1492,7 @@ def test_acquisition_dates_must_be_real_calendar_dates(tmp_path: Path) -> None:
     fam = _family(studies)
     with pytest.raises(B.BuildError, match='real YYYY-MM-DD retrieved_at'):
         B.build({}, {}, {**fam['run.json']['acquisition'], 'retrieved_at': '2026-99-99T00:00:00+00:00'},
-                fam['run.json']['producer'], {}, fam['run.json']['scope'])
+                fam['run.json']['producer'], {}, fam['run.json']['scope'], holdout_exclusion=HOLDOUT_STAMP)
 
     # The contract re-parses an edited manifest: an impossible retrieved_at, or a run-id date that
     # is not the retrieved_at date.
@@ -1524,7 +1545,7 @@ def test_fetch_rate_limiting_version_guard_and_responses_cache_cli(
     id_list = tmp_path / 'fetch_ids.txt'
     id_list.write_text('NCT99000001\nNCT99000002\nNCT99000099\n', encoding='utf-8')
     fetch_out = tmp_path / 'fetch_out'
-    assert build_outcomes_comparability.main(['--fetch', '--nct-list', str(id_list), '--out', str(fetch_out)]) == 0
+    assert build_outcomes_comparability.main(['--fetch', '--nct-list', str(id_list), '--out', str(fetch_out), *HOLDOUT_ARGS]) == 0
     fetched_fam = B.load_dir(fetch_out)
     assert fetched_fam['records.json']['records']['NCT99000099']['results_status'] == 'not_retrieved'
     assert fetched_fam['summary.json']['tables']['retrieval_failures']['count']['numerator'] == 1
@@ -1533,7 +1554,7 @@ def test_fetch_rate_limiting_version_guard_and_responses_cache_cli(
     resp_line = json.dumps({'ids': _ids(studies), 'fetched_at': '2026-11-15T10:00:00Z', 'body': json.dumps({'studies': studies})}) + '\n'
     resp_cache.write_bytes(gzip.compress(resp_line.encode('utf-8'), mtime=0))
     rc_out = tmp_path / 'rc_out'
-    assert build_outcomes_comparability.main(['--responses-cache', str(resp_cache), '--out', str(rc_out)]) == 0
+    assert build_outcomes_comparability.main(['--responses-cache', str(resp_cache), '--out', str(rc_out), *HOLDOUT_ARGS]) == 0
     assert check_outcomes_comparability_contract.main([str(rc_out)]) == 0
 
 
@@ -1615,7 +1636,7 @@ def test_responses_cache_keeps_a_requested_trial_its_response_omits_as_a_retriev
         (tmp_path / rel).write_bytes((ROOT / rel).read_bytes())
     out = tmp_path / 'rc_out'
     cache = _cache('e2e.jsonl.gz', [_line(asked, ['NCT99000001', 'NCT99000002'], url_ids=asked, token=True)])
-    assert build_outcomes_comparability.main(['--responses-cache', str(cache), '--out', str(out)]) == 0
+    assert build_outcomes_comparability.main(['--responses-cache', str(cache), '--out', str(out), *HOLDOUT_ARGS]) == 0
     assert check_outcomes_comparability_contract.main([str(out)]) == 0
     fam = B.load_dir(out)
     rec = fam['records.json']['records']['NCT99000098']
