@@ -1,6 +1,7 @@
 """Snapshot regression against the 2026-06-19 industry fixture — explicit
 re-baseline semantics (phase 2.2). See sponsors/baseline.py.
 """
+import pandas as pd
 import pytest
 
 from conftest import FIXTURE_PATH, FIXTURE_SHA256, RULES_PATH
@@ -18,7 +19,7 @@ def test_fixture_file_integrity():
     assert bl.sha256_file(FIXTURE_PATH) == FIXTURE_SHA256, "fixture file changed; update conftest.FIXTURE_SHA256 deliberately"
 
 
-def test_regression_or_explicit_rebaseline(shipped_rules, fixture_frame):
+def test_regression_or_explicit_rebaseline(shipped_rules: pd.DataFrame, fixture_frame: pd.DataFrame) -> None:
     rules_sha = bl.sha256_file(RULES_PATH)
     actual = bl.compute_baseline(fixture_frame, shipped_rules)
     uncovered = bl.uncovered_rules(fixture_frame, shipped_rules)
@@ -41,8 +42,24 @@ def test_regression_or_explicit_rebaseline(shipped_rules, fixture_frame):
                f"{[u['pattern'] for u in uncovered]}\n" if uncovered else "All attribute rules are covered by the fixture.\n")
         )
 
-    for section in ("index", "companies", "entities"):
-        assert actual[section] == block[section], "\n".join(bl.diff_blocks(block, actual))
+    for section in bl.SECTIONS:
+        if section in block:
+            assert actual[section] == block[section], "\n".join(bl.diff_blocks(block, actual))
+    missing = [s for s in bl.SECTIONS if s not in block]
+    if missing:
+        # A block written before compute_baseline pinned these sections. Its
+        # existing sections matched above, so the missing ones come from the
+        # same rules, fixture and counting code: write them into the block and
+        # fail, so they are committed and reviewed like any re-baseline. A
+        # missing section is never compared as empty and never passes.
+        bl.backfill_sections(rules_sha, actual, missing)
+        pytest.fail(
+            f"the baseline block for company_aliases.csv (sha256 {rules_sha[:12]}…) has no "
+            f"{missing} section(s); its other sections match the fixture.\n"
+            "The missing section(s) were GENERATED and written into that block in "
+            "tests/sponsors/expected_counts.json (stamped under sections_backfilled).\n"
+            "Commit that file so the added numbers are reviewed in the diff, then re-run."
+        )
     if uncovered:
         print("not covered by fixture:", [u["pattern"] for u in uncovered])
 

@@ -1,0 +1,646 @@
+{
+  "baselines": {
+    "26982df29cb9a65b8cc9b23a468f24f98e4ac815d397bb545f7e3abffc81ce1e": {
+      "entities": {
+        "agency for healthcare research and quality ahrq": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "alliance for clinical trials in oncology": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "american cancer society": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "american college of radiology imaging network": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "american heart association": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "bill and melinda gates foundation": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "biomedical advanced research and development authority": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "cancer and leukemia group b": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "centers for disease control and prevention": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "children s oncology group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "cystic fibrosis foundation": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "dana-farber cancer institute": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "duke university": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "eastern cooperative oncology group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "ecog-acrin cancer research group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "eunice kennedy shriver national institute of child health and human development nichd": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "food and drug administration fda": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "gynecologic oncology group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "johns hopkins university": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "juvenile diabetes research foundation": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "m d anderson cancer center": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "massachusetts general hospital": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "mayo clinic": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "memorial sloan kettering cancer center": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "michael j fox foundation for parkinson s research": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "national cancer institute": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national cancer institute nci": {
+          "any": 4,
+          "collaborator": 3,
+          "lead": 1
+        },
+        "national center for advancing translational sciences ncats": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national center for complementary and integrative health nccih": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national eye institute nei": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national heart lung and blood institute nhlbi": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute of allergy and infectious diseases niaid": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "national institute of arthritis and musculoskeletal and skin diseases niams": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute of diabetes and digestive and kidney diseases niddk": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute of general medical sciences nigms": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute of mental health nimh": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute of neurological disorders and stroke ninds": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute on aging nia": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute on alcohol abuse and alcoholism niaaa": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institute on drug abuse nida": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institutes of health clinical center cc": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "national institutes of health nih": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0
+        },
+        "north central cancer treatment group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "nrg oncology": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "nsabp foundation": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "patient-centered outcomes research institute": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "radiation therapy oncology group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "stanford university": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "swog cancer research network": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "the leukemia and lymphoma society": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "u s army medical research and development command": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "united states department of defense": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "university of california san francisco": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "university of pennsylvania": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "university of washington": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "us department of veterans affairs": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "va office of research and development": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "wake forest university health sciences": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "washington university school of medicine": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "wellcome trust": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "yale university": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        }
+      },
+      "generated_at": "2026-11-21T03:26:46+00:00",
+      "generated_by": "tests/sponsors/test_ecosystem.py (auto re-baseline on rules change)",
+      "index": {
+        "organizations": 58,
+        "rows": 70,
+        "sectors": 5,
+        "trials": 60
+      },
+      "not_covered_by_fixture": [],
+      "organizations": {
+        "Agency for Healthcare Research and Quality (AHRQ)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Alliance for Clinical Trials in Oncology": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "American Cancer Society": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "American College of Radiology Imaging Network": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "American Heart Association": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "BARDA": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Bill & Melinda Gates Foundation": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Cancer and Leukemia Group B": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Centers for Disease Control and Prevention (CDC)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Children's Oncology Group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Cystic Fibrosis Foundation": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Dana-Farber Cancer Institute": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Duke University": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "ECOG-ACRIN Cancer Research Group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Eastern Cooperative Oncology Group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Gynecologic Oncology Group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Johns Hopkins University": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Juvenile Diabetes Research Foundation": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "M.D. Anderson Cancer Center": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Massachusetts General Hospital": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "Mayo Clinic": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Memorial Sloan Kettering Cancer Center": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Michael J. Fox Foundation": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "NICHD": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "NIH Clinical Center": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "NRG Oncology": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "NSABP Foundation": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Cancer Institute (NCI)": {
+          "any": 5,
+          "collaborator": 3,
+          "lead": 2
+        },
+        "National Center for Advancing Translational Sciences (NCATS)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Center for Complementary and Integrative Health (NCCIH)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Eye Institute (NEI)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Heart Lung and Blood Institute (NHLBI)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute of Allergy and Infectious Diseases (NIAID)": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 1
+        },
+        "National Institute of Arthritis and Musculoskeletal and Skin Diseases (NIAMS)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute of Diabetes and Digestive and Kidney Diseases (NIDDK)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute of General Medical Sciences (NIGMS)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute of Mental Health (NIMH)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute of Neurological Disorders and Stroke (NINDS)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute on Aging (NIA)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute on Alcohol Abuse and Alcoholism (NIAAA)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institute on Drug Abuse (NIDA)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "National Institutes of Health (NIH)": {
+          "any": 1,
+          "collaborator": 1,
+          "lead": 0
+        },
+        "North Central Cancer Treatment Group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Patient-Centered Outcomes Research Institute (PCORI)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Radiation Therapy Oncology Group": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "SWOG Cancer Research Network": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Stanford University": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "The Leukemia & Lymphoma Society": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "U.S. Department of Defense": {
+          "any": 2,
+          "collaborator": 0,
+          "lead": 2
+        },
+        "U.S. Department of Veterans Affairs": {
+          "any": 2,
+          "collaborator": 1,
+          "lead": 2
+        },
+        "U.S. Food and Drug Administration (FDA)": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "University of California San Francisco": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "University of Pennsylvania": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "University of Washington": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Wake Forest University Health Sciences": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Washington University School of Medicine": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Wellcome Trust": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        },
+        "Yale University": {
+          "any": 1,
+          "collaborator": 0,
+          "lead": 1
+        }
+      },
+      "sectors": {
+        "academic_medical_center": {
+          "any": 15,
+          "collaborator": 1,
+          "lead": 14
+        },
+        "nctn_cooperative_group": {
+          "any": 12,
+          "collaborator": 0,
+          "lead": 12
+        },
+        "nih": {
+          "any": 20,
+          "collaborator": 4,
+          "lead": 17
+        },
+        "non_profit_foundation": {
+          "any": 12,
+          "collaborator": 3,
+          "lead": 9
+        },
+        "us_federal_other": {
+          "any": 8,
+          "collaborator": 1,
+          "lead": 8
+        }
+      }
+    }
+  },
+  "fixture": {
+    "file": "tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv",
+    "sha256": "b765e49669440bd4266269378d4ad609f1b305856f7a46ecae6fd35aaf6cf640",
+    "snapshot_date": "2026-11-20"
+  }
+}

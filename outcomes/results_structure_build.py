@@ -61,6 +61,13 @@ RUN_ID = re.compile(r'^results-structure-\d{4}-\d{2}-\d{2}-[0-9a-f]{10}$')
 NCT = re.compile(r'^NCT\d{8}$')
 # Keys that belong to the private review file and must not reach a published artifact.
 PRIVATE_KEYS = {'reviewer', 'note'}
+# Keys that would state an inference. The reported facts (`primary_measures`, layer B) and a signal's
+# `rows` are copied from the registry and judge nothing, so none of these may appear inside them
+# (docs/outcomes-methods roadmap, layer B acceptance: "No inference").
+INFERENCE_KEYS = {'state', 'met', 'significant', 'favours'}
+# The keys of one row of a title-level signal, by the field the level rule read (RS.signal_rows).
+ROW_KEYS = {'class_titles': {'class_index', 'title'}, 'category_titles': {'class_index', 'category_index', 'title'},
+            'group_titles': {'group_id', 'title'}}
 
 
 class BuildError(Exception):
@@ -655,14 +662,120 @@ def _walk_keys(obj: Any) -> set[str]:
     return found
 
 
+def _position(v: Any) -> bool:
+    """Whether v is a table position: a non-negative int, and not a bool."""
+    return type(v) is int and v >= 0
+
+
+def _rows_problem(signal: dict[str, Any], record: dict[str, Any]) -> str | None:
+    """Why a signal's `rows` cannot stand, or None. A title-level signal lists at least one row,
+    each with exactly the keys of its field; on a PRIMARY measure each row must resolve to the
+    posted table this record copies (the class, category or group at that position, with that
+    title), and they must be exactly the rows the level rule matches in the copied titles. Rows of
+    other measure types cannot be resolved here, because only primary measures are copied, and nor
+    can rows on a primary measure whose copy failed to parse, a failure the record states. Any
+    other signal carries rows None."""
+    rows, field = signal.get('rows'), signal.get('field')
+    if field not in RS.TITLE_LEVEL_FIELDS:
+        return None if rows is None else 'a signal that does not read posted titles carries rows'
+    if not isinstance(rows, list) or not rows:
+        return 'a title-level signal has no rows'
+    if any(not isinstance(x, dict) or set(x) != ROW_KEYS[field] or not isinstance(x.get('title'), str) for x in rows):
+        return f'a row does not have exactly the keys {sorted(ROW_KEYS[field])}'
+    # A position is a non-negative int and a group id a string. bool is a subclass of int in Python,
+    # so `false` would pass isinstance(..., int) and compare equal to 0 below; type() is checked
+    # instead (Codex, PR 103). The signal's measure_index is held to the same rule.
+    if any(not _position(x[k]) for x in rows for k in ('class_index', 'category_index') if k in x) \
+            or any(not isinstance(x['group_id'], str) for x in rows if 'group_id' in x):
+        return 'a row position is not a non-negative integer, or a group id is not a string'
+    if not _position(signal.get('measure_index')):
+        return "the signal's measure_index is not a non-negative integer"
+    # Only the level rule reads posted titles, so rule_dimension is one of its dimensions and the
+    # published dimension is what signal_dimensions maps it to (origin is 'other'). The rows below
+    # are recomputed from rule_dimension, so it must agree with the dimension a reviewer is shown:
+    # a sex signal carrying the age rule's rows would put unrelated rows under a review of sex
+    # (Codex, PR 103).
+    rule = signal.get('rule_dimension')
+    if rule not in RS.LEVEL_RULE_DIMENSIONS or [signal.get('dimension')] != RS.signal_dimensions(rule, []):
+        return "the signal's dimension is not the one its level rule names"
+    # Every posted PRIMARY measure is copied (primary_measures), so a copied measure at the signal's
+    # index says the signal is on a primary measure whatever the signal's own type says; a signal
+    # that disagrees with that measure on its type or title is refused rather than let past the
+    # row checks below (Codex, PR 103).
+    pm = next((m for m in record.get('primary_measures') or []
+               if isinstance(m, dict) and _position(m.get('measure_index')) and m['measure_index'] == signal['measure_index']), None)
+    if pm is not None and (signal.get('measure_type') != 'PRIMARY' or signal.get('measure_title') != pm.get('title')):
+        return "the signal's measure type or title disagrees with the copied primary measure at its index"
+    if signal.get('measure_type') != 'PRIMARY':
+        return None
+    if record.get('primary_measures') is None:
+        # study_record parses the primary measures and the subgroup rule separately, so the rule can
+        # fire on a measure whose copy failed (a measurement without a group id, say). There is then
+        # no copied table to resolve the rows against; the record is kept with that failure stated.
+        failed = any(isinstance(f, dict) and f.get('section') == 'primary_measures'
+                     for f in (record.get('parse') or {}).get('failures') or [])
+        return None if failed else 'rows point at primary measures the record neither copies nor records a failure for'
+    if pm is None:
+        return 'rows point at a primary measure this record does not copy'
+    classes = pm.get('classes') or []
+    for x in rows:
+        if field == 'group_titles':
+            posted = next((g.get('title') for g in pm.get('groups') or [] if g.get('id') == x['group_id']), None)
+        else:
+            k = x['class_index']
+            cats = classes[k].get('categories') or [] if k < len(classes) else None
+            if field == 'class_titles':
+                posted = classes[k].get('title') if cats is not None else None
+            else:
+                j = x['category_index']
+                posted = cats[j].get('title') if cats is not None and j < len(cats) else None
+        if posted != x['title']:
+            return 'a row does not resolve to the posted table at its position and title'
+    # The copied table holds every title the level rule reads, so the rows can be recomputed from it:
+    # the same rule on the same titles must give exactly these rows, none substituted and none left
+    # out (Codex, PR 103).
+    if field == 'class_titles':
+        titles = [c.get('title') or '' for c in classes]
+    elif field == 'category_titles':
+        titles = [cat.get('title') or '' for c in classes for cat in c.get('categories') or []]
+    else:
+        titles = [g.get('title') or '' for g in pm.get('groups') or []]
+    ident = RS.level_identity(titles).get(signal.get('rule_dimension'))
+    if ident is None or rows != RS.signal_rows({'classes': classes, 'groups': pm.get('groups') or []}, field, ident):
+        return 'the rows are not the ones the rule matches in the copied titles'
+    return None
+
+
+def _same(a: Any, b: Any) -> bool:
+    """JSON equality that keeps the types apart. Python's == holds for True == 1, False == 0 and
+    1 == 1.0, so a count published as `true` or `1.0` would pass a plain comparison with the value
+    it should be. Here a bool, an int, a float and a string are each equal only to their own kind,
+    at every depth. A family loaded from disk has only JSON types, and summarize() builds the same
+    ones, so a correct family compares equal."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    return bool(a == b)
+
+
+def _count(v: Any) -> bool:
+    """Whether v is a count: a non-negative int, and not a bool."""
+    return type(v) is int and v >= 0
+
+
 def check(files: dict[str, Any]) -> list[str]:
     """Producer-side check of a family; every problem found (an empty list passes). The build
-    runs it before anything is written."""
+    runs it before anything is written. Counts and versions are compared with _same and _count,
+    never with == or isinstance(..., int), so `true`, `false` or `1.0` in place of a count is
+    refused."""
     p: list[str] = []
     run = files.get('run.json')
     if not isinstance(run, dict):
         return ['run.json is missing']
-    if run.get('schema_version') != SCHEMA_VERSION:
+    if not _same(run.get('schema_version'), SCHEMA_VERSION):
         p.append('run.json schema_version is not 1')
     if not isinstance(run.get('run_id'), str) or not RUN_ID.match(run['run_id']):
         p.append('run.json run_id is malformed')
@@ -675,7 +788,7 @@ def check(files: dict[str, Any]) -> list[str]:
     for path in sorted(listed):
         if sha256(dump(files[path])) != listed[path]:
             p.append(f'{path}: sha256 does not match run.json')
-        if files[path].get('run_id') != run.get('run_id') or files[path].get('schema_version') != SCHEMA_VERSION \
+        if files[path].get('run_id') != run.get('run_id') or not _same(files[path].get('schema_version'), SCHEMA_VERSION) \
                 or files[path].get('method_version') != RS.METHOD_VERSION:
             p.append(f'{path}: from another run, schema or method version')
     if isinstance(run.get('run_id'), str) and run['run_id'][-10:] != run_identity(run, {k: files[k] for k in listed}):
@@ -685,7 +798,8 @@ def check(files: dict[str, Any]) -> list[str]:
         p.append(f'review-file keys present in records.json: {sorted(leaked)}')
     records = files['records.json'].get('records') or {}
     summary = files['summary.json']
-    if run.get('n_records') != len(records) or (summary.get('denominators') or {}).get('requested', {}).get('n') != len(records):
+    if not _same(run.get('n_records'), len(records)) \
+            or not _same((summary.get('denominators') or {}).get('requested', {}).get('n'), len(records)):
         p.append('record count differs between run.json, summary.json and records.json')
     n_detected = 0
     for n, r in records.items():
@@ -698,6 +812,14 @@ def check(files: dict[str, Any]) -> list[str]:
         if r.get('document_and_publication_review') != RS.DOCUMENT_AND_PUBLICATION_REVIEW:
             p.append(f'{n}: document_and_publication_review is not stated')
         sg = r.get('subgroup') or {}
+        inferred = (_walk_keys(r.get('primary_measures') or [])
+                    | _walk_keys([s.get('rows') for s in sg.get('signals') or []])) & INFERENCE_KEYS
+        if inferred:
+            p.append(f'{n}: copied facts or signal rows carry an inference key {sorted(inferred)}')
+        for s in sg.get('signals') or []:
+            problem = _rows_problem(s, r)
+            if problem:
+                p.append(f"{n} {s.get('signal_id')}: {problem}")
         states = [sg.get('state'), *((sg.get('by_dimension') or {}).get(d) for d in RS.DIMENSIONS)]
         if any(s not in RS.ALL_SUBGROUP_STATES for s in states):
             p.append(f'{n}: a subgroup state is outside the vocabulary')
@@ -717,26 +839,50 @@ def check(files: dict[str, Any]) -> list[str]:
         p.append('run.json has no scope (frame, included, excluded)')
         return p
     ex = scope['excluded']
-    if scope['included']['n'] != len(records):
+    # Counts that come from fetching or reviewing, not from the records, so the recount below cannot
+    # reproduce them: each must at least be a count. (summarize copies scope.frame.n into the summary,
+    # so the recount would echo a wrong-typed value back unchanged; Codex, PR 104.)
+    #   - The frame count is computed by every build: required.
+    #   - The parameter and review counts (parameters.n_requested and batch_size, reviews.n_rows) are
+    #     written as ints by the builders: when present, each must be a count, and None is refused.
+    #   - The acquisition counts are copied from the archive's metadata with .get(), and an archive
+    #     fetched before they were recorded lacks them: a None there records that absence and is
+    #     accepted, never read as zero. This is the only place a None count is accepted (Codex, PR 104).
+    provenance = {'scope.frame.n': (scope.get('frame') or {}).get('n')}
+    for k, v in (run.get('acquisition') or {}).items():
+        if k.startswith('n_') and v is not None:
+            provenance[f'acquisition.{k}'] = v
+    for block in ('parameters', 'reviews'):
+        for k, v in (run.get(block) or {}).items():
+            if k.startswith('n_') or k == 'batch_size':
+                provenance[f'{block}.{k}'] = v
+    bad = sorted(k for k, v in provenance.items() if not _count(v))
+    if bad:
+        p.append(f'run.json counts that are not non-negative integers: {bad}')
+    if not _same(scope['included']['n'], len(records)):
         p.append('scope: the included count is not the number of records')
-    if ex['n'] != len(ex['nct_ids']) or (ex['n'] > 0 and not ex['reason']):
+    if not _same(ex['n'], len(ex['nct_ids'])) or (ex['n'] > 0 and not ex['reason']):
         p.append('scope: excluded records need their ids and a stated reason')
     if set(ex['nct_ids']) & set(records):
         p.append('scope: an excluded id has a record')
     recount = summarize(records, {'unkeyed_lines': summary['tables']['retrieval_failures'].get('unkeyed_archive_lines', []),
                                   'unrequested_records': summary['tables']['retrieval_failures'].get('unrequested_records', []),
                                   'reviews_not_matched': (summary.get('reviews') or {}).get('not_matched', [])}, scope)
-    for key in ('scope', 'denominators', 'metrics', 'subgroup_states', 'signals', 'tables'):
-        if recount[key] != summary.get(key):
+    # Every block of summary.json that summarize() builds; reviews is counted from the records' signal
+    # reviews, with not_matched passed through from the summary (Codex, PR 104).
+    for key in ('scope', 'denominators', 'metrics', 'subgroup_states', 'signals', 'tables', 'reviews'):
+        if not _same(recount[key], summary.get(key)):
             p.append(f'summary.json {key} is not what records.json gives')
     den = summary.get('denominators') or {}
     for m in summary.get('metrics') or []:
         d = den.get(m.get('denominator'))
-        if d is None or not isinstance(m.get('numerator'), int) or not 0 <= m['numerator'] <= d['n'] or not m.get('definition'):
+        if d is None or not _count(m.get('numerator')) or not _count(d.get('n')) or m['numerator'] > d['n'] \
+                or not m.get('definition'):
             p.append(f"metric {m.get('id')}: unknown denominator, numerator out of range, or no definition")
     for d in RS.DIMENSIONS:
         counts = (summary.get('subgroup_states') or {}).get('by_dimension', {}).get(d) or {}
-        if set(counts) != set(RS.ALL_SUBGROUP_STATES) or sum(counts.values()) != len(records):
+        if set(counts) != set(RS.ALL_SUBGROUP_STATES) or not all(_count(v) for v in counts.values()) \
+                or sum(counts.values()) != len(records):
             p.append(f'subgroup states for {d} must count all five values and sum to the requested trials')
     return p
 

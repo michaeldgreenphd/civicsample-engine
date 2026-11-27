@@ -1,47 +1,45 @@
 {
-  "audited_at": "2026-11-15T14:04:38.538208+00:00",
-  "snapshot_date": "2026-11-15",
-  "pipeline_commit": "22a92b8fe67d95f99608da8b407f85431131c8b4",
-  "source_extracted_at": "2026-11-15T13:47:22.876652+00:00",
+  "audited_at": "2026-11-22T14:45:28.815844+00:00",
+  "snapshot_date": "2026-11-22",
+  "pipeline_commit": "aa14a2da1b14ca58ec17b76c35bf7f39c696d1a3",
+  "source_extracted_at": "2026-11-22T14:24:57.167231+00:00",
   "rules_sha256": "3e13bc5926f6f8bc5025151c60ea7dc8f40a5f7b8d7a209026ba29472e70601c",
   "rules_changed_vs_prior": false,
-  "n_literals": 15865,
+  "n_literals": 15881,
   "n_attributed": 138,
   "n_reviewed_excluded": 1,
-  "n_unreviewed": 15726,
+  "n_unreviewed": 15742,
   "n_blank_literal_trials": 0,
   "inbox_size": 23,
   "inbox_top": {
-    "name": "Dr. Reddy's Laboratories Limited, India",
-    "n_trials": 31,
-    "roles": "collaborator,lead",
+    "name": "NanOlogy, LLC (doing business as Intryx Therapeutics, LLC)",
+    "n_trials": 8,
+    "roles": "lead",
     "agency_class": "INDUSTRY"
   },
-  "inbox_open_count": 15726,
-  "inbox_open_industry_count": 5237,
+  "inbox_open_count": 15742,
+  "inbox_open_industry_count": 5244,
   "inbox_open_oldest": {
     "name": "National Cancer Institute (NCI)",
-    "n_trials": 4543,
+    "n_trials": 4550,
     "roles": "collaborator,lead",
     "agency_class": "NIH",
     "first_seen": "2026-08-30",
-    "weeks_open": 11
+    "weeks_open": 12
   },
   "inbox_open_oldest_industry": {
     "name": "Medtronic",
-    "n_trials": 121,
+    "n_trials": 122,
     "roles": "collaborator,lead",
     "agency_class": "INDUSTRY",
     "first_seen": "2026-08-30",
-    "weeks_open": 11
+    "weeks_open": 12
   },
-  "n_match_changes": 1,
-  "match_change_causes": {
-    "registry_edit": 1
-  },
-  "n_label_changes": 58,
+  "n_match_changes": 0,
+  "match_change_causes": {},
+  "n_label_changes": 25,
   "label_change_causes": {
-    "registry_edit": 58
+    "registry_edit": 25
   },
   "had_prior": {
     "bridge": true,
