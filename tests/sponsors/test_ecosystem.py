@@ -106,9 +106,31 @@ def _check_or_rebaseline_ecosystem(
             )
         )
 
-    for section in ("index", "sectors", "organizations", "entities"):
-        assert actual[section] == block[section], "\n".join(
-            eco.diff_ecosystem_blocks(block, actual)
+    for section in eco.ECOSYSTEM_BASELINE_SECTIONS:
+        if section in block:
+            assert actual[section] == block[section], "\n".join(
+                eco.diff_ecosystem_blocks(block, actual)
+            )
+    missing = [s for s in eco.ECOSYSTEM_BASELINE_SECTIONS if s not in block]
+    if missing:
+        # A block written before compute_ecosystem_baseline produced these
+        # sections. Its other sections matched above, so the missing ones
+        # come from the same rules, fixture and counting code: add them
+        # through write_ecosystem_baseline (which re-checks the match and the
+        # trial-shape refusal) and fail, so they are committed and reviewed
+        # like any re-baseline. A missing section never passes.
+        eco.write_ecosystem_baseline(
+            rules_sha, actual, uncovered, fixture_meta, path=expected_path,
+            complete_sections=missing,
+        )
+        pytest.fail(
+            "the baseline block for ecosystem_rules.csv (sha256 "
+            + rules_sha[:12]
+            + f"…) has no {missing} section(s); its other sections match the fixture.\n"
+            "The missing section(s) were GENERATED and written into that block in "
+            + expected_path
+            + " (stamped under sections_backfilled).\n"
+            "Commit that file so the added numbers are reviewed in the diff, then re-run."
         )
 
 
@@ -646,6 +668,196 @@ def test_ecosystem_fixture_integrity_and_sha256_rebaseline(
             "rule_type": "exact_normalized",
             "pattern": "unseen foundation",
         }
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 10b. The `shared` baseline section and completing an older block
+#
+# Fictional organizations and ids (NCT99000951..NCT99000954) only.
+# ---------------------------------------------------------------------------
+
+_SHARED_PARTNER: str = "Fictional University & Example Foundation"
+_SHARED_META: dict[str, str] = {"file": "fictional_fixture.csv", "snapshot_date": "2026-11-20"}
+_SHARED_SHA: str = "a" * 64
+
+
+def _shared_sponsors() -> pd.DataFrame:
+    return frame([
+        ("NCT99000951", "OTHER", "lead", _SHARED_PARTNER),
+        ("NCT99000952", "OTHER", "collaborator", _SHARED_PARTNER),
+        ("NCT99000952", "OTHER", "lead", "Fictional University"),
+        ("NCT99000953", "OTHER", "lead", "Fictional Solo Clinic"),
+    ])
+
+
+def _shared_rules(solo_shared: str = "no", base_shared: str = "no") -> pd.DataFrame:
+    return eco_rules_df([
+        ("Fictional University", "academic_medical_center", "exact_literal",
+         _SHARED_PARTNER, "attribute", "yes", "partnership literal, shared"),
+        ("Example Foundation", "non_profit_foundation", "exact_literal",
+         _SHARED_PARTNER, "attribute", "yes", "partnership literal, shared"),
+        ("Fictional University", "academic_medical_center", "exact_normalized",
+         "fictional university", "attribute", base_shared, "base name"),
+        ("Fictional Solo Clinic", "academic_medical_center", "exact_literal",
+         "Fictional Solo Clinic", "attribute", solo_shared, "single organization"),
+    ])
+
+
+def test_shared_section_counts_shared_yes_rows_and_trials_per_organization() -> None:
+    block = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules())
+    assert tuple(block) == eco.ECOSYSTEM_BASELINE_SECTIONS
+    # Only organizations with a shared=yes index row appear. Fictional
+    # University's lead row on NCT99000952 comes from its shared=no rule, so
+    # it counts in `organizations` but not here.
+    assert block["shared"] == {
+        "Example Foundation": {"rows": 2, "any": 2, "lead": 1, "collaborator": 1},
+        "Fictional University": {"rows": 2, "any": 2, "lead": 1, "collaborator": 1},
+    }
+    assert block["organizations"]["Fictional University"] == {"any": 2, "lead": 2, "collaborator": 1}
+
+
+def test_shipped_ecosystem_rules_give_an_empty_shared_section(
+    shipped_ecosystem_rules: pd.DataFrame,
+) -> None:
+    # Every shipped ecosystem rule is shared=no, so no index row is shared;
+    # the section pins that emptiness until a rule says otherwise.
+    assert set(shipped_ecosystem_rules["shared"]) == {"no"}
+    assert eco.compute_ecosystem_baseline(_holdout_frame(), shipped_ecosystem_rules)["shared"] == {}
+
+
+def test_a_shared_flip_that_moves_no_attribution_now_moves_the_ecosystem_baseline() -> None:
+    before = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules(solo_shared="no"))
+    after = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules(solo_shared="yes"))
+    for section in ("index", "sectors", "organizations", "entities"):
+        assert before[section] == after[section]
+    assert "Fictional Solo Clinic" not in before["shared"]
+    assert after["shared"]["Fictional Solo Clinic"] == {"rows": 1, "any": 1, "lead": 1, "collaborator": 0}
+    assert eco.diff_ecosystem_blocks(before, after) == [
+        "shared.Fictional Solo Clinic: expected None got "
+        "{'rows': 1, 'any': 1, 'lead': 1, 'collaborator': 0}"
+    ]
+
+
+def test_shared_rows_catch_a_flip_that_leaves_trial_counts_alone() -> None:
+    # NCT99000954 already has a shared=yes collaborator row for Fictional
+    # University (the partnership literal); flipping the rule behind its
+    # second collaborator row changes no trial count, only `rows`.
+    sp = frame([
+        ("NCT99000954", "OTHER", "collaborator", _SHARED_PARTNER),
+        ("NCT99000954", "OTHER", "collaborator", "Fictional University"),
+    ])
+    no = eco.compute_ecosystem_baseline(sp, _shared_rules(base_shared="no"))
+    yes = eco.compute_ecosystem_baseline(sp, _shared_rules(base_shared="yes"))
+    assert no["shared"]["Fictional University"] == {"rows": 1, "any": 1, "lead": 0, "collaborator": 1}
+    assert yes["shared"]["Fictional University"] == {"rows": 2, "any": 1, "lead": 0, "collaborator": 1}
+
+
+def _write_legacy_ecosystem_file(path: Path, actual: dict[str, Any], **changes: Any) -> None:
+    """An expected-counts file whose one block predates the shared section."""
+    legacy: dict[str, Any] = {s: actual[s] for s in ("index", "sectors", "organizations", "entities")}
+    legacy.update(changes)
+    path.write_text(json.dumps({
+        "fixture": _SHARED_META,
+        "baselines": {_SHARED_SHA: {
+            "generated_at": "2026-11-21T03:26:46+00:00",
+            "generated_by": "earlier run",
+            "not_covered_by_fixture": [],
+            **legacy,
+        }},
+    }), encoding="utf-8")
+
+
+def test_complete_sections_adds_only_the_missing_section_and_stamps_it(tmp_path: Path) -> None:
+    actual = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules())
+    path = tmp_path / "expected_ecosystem_counts.json"
+    _write_legacy_ecosystem_file(path, actual)
+    before = json.loads(path.read_text(encoding="utf-8"))
+
+    eco.write_ecosystem_baseline(
+        _SHARED_SHA, actual, [], dict(_SHARED_META), path=str(path), complete_sections=["shared"]
+    )
+
+    after = json.loads(path.read_text(encoding="utf-8"))
+    assert after["fixture"] == before["fixture"]
+    stored, old = after["baselines"][_SHARED_SHA], before["baselines"][_SHARED_SHA]
+    assert stored["shared"] == actual["shared"]
+    for key in old:
+        assert stored[key] == old[key]
+    assert set(stored) == set(old) | {"shared", "sections_backfilled"}
+    assert set(stored["sections_backfilled"]) == {"shared"}
+    assert "section added to an existing block" in stored["sections_backfilled"]["shared"]["generated_by"]
+
+
+def test_complete_sections_refusals_write_nothing(tmp_path: Path) -> None:
+    actual = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules())
+    path = tmp_path / "expected_ecosystem_counts.json"
+
+    def refused(match: str, sections: Any, sha: str = _SHARED_SHA,
+                meta: dict[str, str] | None = None, **legacy_changes: Any) -> str:
+        _write_legacy_ecosystem_file(path, actual, **legacy_changes)
+        before = path.read_bytes()
+        with pytest.raises(ValueError, match=match) as exc_info:
+            eco.write_ecosystem_baseline(
+                sha, actual, [], dict(meta or _SHARED_META), path=str(path),
+                complete_sections=sections,
+            )
+        assert path.read_bytes() == before
+        return str(exc_info.value)
+
+    refused("not one string", "shared")
+    msg = refused("not baseline sections", ["NCT99000951"])
+    assert "NCT99000951" not in msg
+    refused("repeated name", ["shared", "shared"])
+    refused("may not name every section", list(eco.ECOSYSTEM_BASELINE_SECTIONS))
+    refused("needs a block already stored", ["shared"], sha="b" * 64)
+    refused("another fixture description", ["shared"], meta={"file": "other.csv"})
+    refused("shared already stored", ["shared"], shared=actual["shared"])
+    drifted = json.loads(json.dumps(actual["organizations"]))
+    drifted["Fictional University"]["any"] += 1
+    refused("stored organizations differ from block", ["shared"], organizations=drifted)
+    _write_legacy_ecosystem_file(path, actual)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    del data["baselines"][_SHARED_SHA]["entities"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="also lacks entities"):
+        eco.write_ecosystem_baseline(
+            _SHARED_SHA, actual, [], dict(_SHARED_META), path=str(path), complete_sections=["shared"]
+        )
+    assert path.read_bytes() == before
+
+
+def test_write_refuses_a_shared_section_of_the_wrong_shape(tmp_path: Path) -> None:
+    actual = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules())
+    path = tmp_path / "expected_ecosystem_counts.json"
+    bad_blocks: list[dict[str, Any]] = []
+    without = {k: v for k, v in actual.items() if k != "shared"}
+    bad_blocks.append(without)
+    for counts in (
+        {"any": 2, "lead": 1, "collaborator": 1},                   # no rows
+        {"rows": True, "any": 2, "lead": 1, "collaborator": 1},     # a bool is not a count
+        {"rows": 2, "any": 2, "lead": 1, "collaborator": 1, "x": 1},
+    ):
+        block = json.loads(json.dumps(actual))
+        block["shared"]["Fictional University"] = counts
+        bad_blocks.append(block)
+    not_an_org = json.loads(json.dumps(actual))
+    not_an_org["shared"]["Unattributed Org"] = {"rows": 1, "any": 1, "lead": 1, "collaborator": 0}
+    bad_blocks.append(not_an_org)
+    for block in bad_blocks:
+        with pytest.raises(ValueError):
+            eco.write_ecosystem_baseline(_SHARED_SHA, block, [], dict(_SHARED_META), path=str(path))
+        assert not path.exists()
+    eco.write_ecosystem_baseline(_SHARED_SHA, actual, [], dict(_SHARED_META), path=str(path))
+    assert json.loads(path.read_text(encoding="utf-8"))["baselines"][_SHARED_SHA]["shared"] == actual["shared"]
+
+
+def test_diff_against_an_ecosystem_block_without_shared_says_so() -> None:
+    actual = eco.compute_ecosystem_baseline(_shared_sponsors(), _shared_rules())
+    legacy = {s: actual[s] for s in ("index", "sectors", "organizations", "entities")}
+    assert eco.diff_ecosystem_blocks(legacy, actual) == [
+        "shared: not in the earlier block, nothing to compare"
     ]
 
 
