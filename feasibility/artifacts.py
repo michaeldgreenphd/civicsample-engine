@@ -35,6 +35,7 @@ from feasibility.benchmarks import (
     SPONSOR_REVIEW_STATES,
     UNCLASSIFIED_INDICATION,
     build_strata_and_sponsors,
+    ACCRUAL_WINDOW_DURATIONS,
     indication_pairs,
     summarize_cell,
     untyped_window_counts,
@@ -103,11 +104,9 @@ PERCENTILE_BLOCK_KEYS = (
     "period1_completion_rate",
 )
 
-# `accrual.calendar_window_used` -> the `durations` entry that window was computed from.
-ACCRUAL_WINDOW_DURATION_KEYS = {
-    "start_to_primary_completion": "primary_completion",
-    "start_to_study_completion": "study_completion",
-}
+# `accrual.calendar_window_used` -> the `durations` entry that window was computed from (the mapping the
+# untyped-date recount uses too).
+ACCRUAL_WINDOW_DURATION_KEYS = ACCRUAL_WINDOW_DURATIONS
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -1121,8 +1120,10 @@ def check_contract(
         # itself be eligible for realized duration (so excluded windows, including weekly dates
         # with no recorded type, can never reach actual_participants_per_month).
         if acc.get("rate_status") == "computed":
+            # A window name that is not a string (a list, an object) raised TypeError in the lookup.
+            window = acc.get("calendar_window_used")
             window_dur = (t.get("durations") or {}).get(
-                ACCRUAL_WINDOW_DURATION_KEYS.get(acc.get("calendar_window_used"), "")
+                ACCRUAL_WINDOW_DURATION_KEYS.get(window, "") if isinstance(window, str) else ""
             ) or {}
             if window_dur.get("eligible_for_realized_duration") is not True:
                 problems.append(f"{nct}.accrual: velocity computed over a window not eligible for realized duration")

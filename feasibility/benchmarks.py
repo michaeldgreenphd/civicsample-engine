@@ -462,11 +462,30 @@ ACCRUAL_WINDOW_DURATIONS: dict[str, str] = {
 }
 
 
-def _rests_on_untyped_date(duration: dict[str, Any]) -> bool:
-    """Whether a realized duration window has a start or end date struct with no registry `type`."""
-    return duration["eligible_for_realized_duration"] is True and (
-        duration["start_date_type"] is None or duration["end_date_type"] is None
+def _rests_on_untyped_date(duration: Any) -> bool:
+    """Whether a realized duration window has a start or end date struct with no registry `type`.
+
+    The contract recounts these from `trials.jsonl.gz`, where a row may be edited or malformed. A
+    missing type key reads as no type, as in the contract's own per-trial check, so an edited row
+    surfaces as a recount mismatch rather than raising out of `check_contract`.
+    """
+    if not isinstance(duration, dict):
+        return False
+    return duration.get("eligible_for_realized_duration") is True and (
+        duration.get("start_date_type") is None or duration.get("end_date_type") is None
     )
+
+
+def _accrual_window_duration(trial: dict[str, Any]) -> Any:
+    """The duration window a computed accrual velocity rests on, or `None` when its
+    `calendar_window_used` is missing or not one of `ACCRUAL_WINDOW_DURATIONS`.
+
+    `None` is not counted as untyped: the contract's per-trial check already reports a computed
+    velocity whose window is not a realized duration.
+    """
+    window = trial["accrual"].get("calendar_window_used")
+    name = ACCRUAL_WINDOW_DURATIONS.get(window) if isinstance(window, str) else None
+    return trial["durations"].get(name) if name is not None else None
 
 
 def untyped_window_counts(trials: Sequence[dict[str, Any]]) -> dict[str, int]:
@@ -489,10 +508,7 @@ def untyped_window_counts(trials: Sequence[dict[str, Any]]) -> dict[str, int]:
         "actual_participants_per_month": sum(
             1
             for t in trials
-            if t["accrual"]["rate_status"] == "computed"
-            and _rests_on_untyped_date(
-                t["durations"][ACCRUAL_WINDOW_DURATIONS[t["accrual"]["calendar_window_used"]]]
-            )
+            if t["accrual"]["rate_status"] == "computed" and _rests_on_untyped_date(_accrual_window_duration(t))
         ),
     }
 

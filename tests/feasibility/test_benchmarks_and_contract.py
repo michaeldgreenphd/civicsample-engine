@@ -1673,6 +1673,30 @@ def test_realized_windows_on_untyped_dates_are_counted() -> None:
     assert any("do not match recount" in p for p in artifacts.check_contract(edited))
 
 
+@pytest.mark.parametrize(
+    "edit",
+    ["window_none", "window_unknown", "window_list", "window_missing", "start_type_missing"],
+)
+def test_untyped_recount_reports_a_malformed_row_instead_of_raising(edit: str) -> None:
+    # On 2d1269e each edit raised KeyError or TypeError out of check_contract through the new recount.
+    # 03fd911 reported the computed velocity over an ineligible window and returned, except for a list
+    # window name, which raised TypeError in the per-trial window lookup there too.
+    trials, sponsor_meta, review_meta = benchmarks.build_trial_records(_untyped_date_cohort(), reviews={})
+    family, _raw = _fixture_family(trials, sponsor_meta, review_meta)
+    row = next(t for t in family["trials.jsonl.gz"] if t["nct_id"] == "NCT99700002")
+    if edit == "start_type_missing":
+        del row["durations"]["primary_completion"]["start_date_type"]
+    elif edit == "window_missing":
+        del row["accrual"]["calendar_window_used"]
+    else:
+        bad_windows: dict[str, Any] = {"window_none": None, "window_unknown": "BANANA", "window_list": ["x"]}
+        row["accrual"]["calendar_window_used"] = bad_windows[edit]
+    problems = artifacts.check_contract(family)
+    assert problems
+    if edit != "start_type_missing":
+        assert any("velocity computed over a window not eligible" in p for p in problems)
+
+
 def test_typed_and_weekly_windows_count_no_untyped_date() -> None:
     # Controls, on both heads: typed API v2 windows and weekly-projection windows (never realized without
     # both types) leave the summary's realized counts as they were.
