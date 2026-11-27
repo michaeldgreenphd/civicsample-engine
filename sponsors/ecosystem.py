@@ -970,11 +970,12 @@ def compute_ecosystem_baseline(
     rules: pd.DataFrame,
 ) -> dict[str, Any]:
     """Compute deterministic baseline block: index, sectors, organizations, entities,
-    shared.
+    shared, shared_entities.
 
     The sections are ECOSYSTEM_BASELINE_SECTIONS, in that order. `shared`
-    pins the index's `shared` column, which the other sections cannot see
-    (see the comment where it is built).
+    and `shared_entities` pin the index's `shared` column, which the other
+    sections cannot see, per organization and per as-registered entity (see
+    the comments where they are built).
 
     Audit holdout: ENFORCES when `fixture` carries `in_audit` (a column,
     row-index level, cell or `attrs` entry under a flag name), raising
@@ -1040,6 +1041,31 @@ def compute_ecosystem_baseline(
             "collaborator": int(len(organization_trials(yes, str(c), role="collaborator"))),
         }
 
+    # `shared_entities` pin (the same rule as sponsors/baseline.py's industry
+    # section): the same shared=yes rows, keyed by as-registered entity (the
+    # `entities` view) instead of by organization. A separate section rather
+    # than extra keys inside `entities`, so a block written before it is
+    # completed by adding a section (complete_sections) and the stored
+    # `entities` counts are never rewritten for unchanged rules. It records
+    # which entities the shared=yes rows belong to, which `shared` does not:
+    # two opposite flips on rows of two entities of one organization (one row
+    # yes -> no, another no -> yes, same role) leave index, sectors,
+    # organizations, entities and every `shared` count alone, and change this
+    # section. A partnership literal is one entity under several
+    # organizations; its rows are counted together here, one per
+    # organization. Entity keys are already normalized (sr.parsed_entity), so
+    # `yes["entity"] == e` matches the rows organization_trials(...,
+    # view="as_registered") selects. Empty while every rule is shared=no.
+    shared_entities: dict[str, dict[str, int]] = {}
+    for e in sorted(yes["entity"].unique()):
+        t = organization_trials(yes, str(e), view="as_registered")
+        shared_entities[str(e)] = {
+            "rows": int((yes["entity"] == e).sum()),
+            "any": int(len(t)),
+            "lead": int(t["is_lead"].sum()),
+            "collaborator": int(t["is_collaborator"].sum()),
+        }
+
     return {
         "index": {
             "rows": int(len(idx)),
@@ -1051,6 +1077,7 @@ def compute_ecosystem_baseline(
         "organizations": organizations,
         "entities": entities,
         "shared": shared,
+        "shared_entities": shared_entities,
     }
 
 
@@ -1059,7 +1086,7 @@ def compute_ecosystem_baseline(
 # complete_sections (see tests/sponsors/test_ecosystem.py); a missing
 # section is never compared as if it were empty.
 ECOSYSTEM_BASELINE_SECTIONS: tuple[str, ...] = (
-    "index", "sectors", "organizations", "entities", "shared",
+    "index", "sectors", "organizations", "entities", "shared", "shared_entities",
 )
 # The shape write_ecosystem_baseline accepts: what compute_ecosystem_baseline,
 # uncovered_ecosystem_rules and the fixture description produce
@@ -1137,14 +1164,15 @@ def _refuse_trial_shaped_baseline(
     gives it, or ValueError is raised:
       * rules_sha: 64 lowercase hex digits (sha256_file);
       * block: exactly the sections ECOSYSTEM_BASELINE_SECTIONS ("index",
-        "sectors", "organizations", "entities" and "shared":
-        compute_ecosystem_baseline); "index" maps "rows", "sectors",
-        "organizations" and "trials" to ints; "sectors", "organizations"
-        and "entities" map a name to "any", "lead" and "collaborator" ints,
-        and "shared" maps a name to "rows", "any", "lead" and
-        "collaborator" ints (a bool is not an int here); "sectors" names
-        only sectors this module defines, and "shared" only organizations
-        the block's "organizations" names;
+        "sectors", "organizations", "entities", "shared" and
+        "shared_entities": compute_ecosystem_baseline); "index" maps
+        "rows", "sectors", "organizations" and "trials" to ints;
+        "sectors", "organizations" and "entities" map a name to "any",
+        "lead" and "collaborator" ints, and "shared" and "shared_entities"
+        map a name to "rows", "any", "lead" and "collaborator" ints (a
+        bool is not an int here); "sectors" names only sectors this module
+        defines, "shared" only organizations the block's "organizations"
+        names, and "shared_entities" only entities its "entities" names;
       * uncovered: a list of records with exactly the str fields
         "canonical", "sector", "rule_type" and "pattern"
         (uncovered_ecosystem_rules);
@@ -1167,8 +1195,8 @@ def _refuse_trial_shaped_baseline(
         extra = len(set(block) - _BASELINE_SECTIONS) if isinstance(block, dict) else 0
         raise ValueError(
             "write_ecosystem_baseline: block must hold exactly the sections index, "
-            f"sectors, organizations, entities and shared ({extra} other key(s)); a "
-            "baseline holds aggregate counts only, so nothing is written"
+            f"sectors, organizations, entities, shared and shared_entities ({extra} "
+            "other key(s)); a baseline holds aggregate counts only, so nothing is written"
         )
     sections_ok = (
         _counts_section_ok(block["index"], _BASELINE_INDEX_KEYS)
@@ -1176,9 +1204,13 @@ def _refuse_trial_shaped_baseline(
             _counts_section_ok(block[section], None)
             for section in ("sectors", "organizations", "entities")
         )
-        and _counts_section_ok(block["shared"], None, _SHARED_COUNT_KEYS)
+        and all(
+            _counts_section_ok(block[section], None, _SHARED_COUNT_KEYS)
+            for section in ("shared", "shared_entities")
+        )
         and set(block["sectors"]) <= VALID_ECOSYSTEM_SECTORS | set(UNIFIED_SECTORS)
         and set(block["shared"]) <= set(block["organizations"])
+        and set(block["shared_entities"]) <= set(block["entities"])
     )
     if not sections_ok:
         raise ValueError(
