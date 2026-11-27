@@ -1576,7 +1576,12 @@ def test_openfda_drug_query_joins_fields_with_or_and_refuses_records_from_the_ol
     assert '%2B' not in encoded
     assert '+OR+' in encoded
     decoded = urllib.parse.parse_qs(encoded)['search'][0]
-    assert decoded.split(' OR ') == [f'{field}:"lidocaine cream"' for field in A.OPENFDA_DRUG_FIELDS]
+    # The field clauses are still OR-joined, each the quoted phrase; they now stand in parentheses
+    # ahead of the NDA/BLA restriction (`A.OPENFDA_INNOVATOR_APPLICATIONS`).
+    field_part, _, application_part = decoded.partition(') AND (')
+    assert field_part.startswith('(') and application_part.endswith(')')
+    assert field_part[1:].split(' OR ') == [f'{field}:"lidocaine cream"' for field in A.OPENFDA_DRUG_FIELDS]
+    assert application_part[:-1] == A.OPENFDA_INNOVATOR_APPLICATIONS
 
     # A cache whose drug-query records were made with another query form is refused, at load and at freeze.
     cache = tmp_path / 'old_form_cache'
@@ -1602,6 +1607,228 @@ def test_openfda_drug_query_joins_fields_with_or_and_refuses_records_from_the_ol
     assert fda_log.records[A.drug_query_key('lumirafenib')]['params'] == next_form('lumirafenib')
     A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
     assert A.load_frozen_cache(cache).openfda[A.drug_query_key('floodedgeneric')]['params'] == next_form('floodedgeneric')
+
+
+# ---------------------------------------------------------------- 12b. openFDA substance name, NDA/BLA restriction, ANDA rule
+# Trials, applications and drug names below are fictional (`NCT99000001`.., `ANDA9905xx`, `NDA9876xx`, `BLA9876xx`).
+
+def _previous_drug_query_params(drug_norm: str) -> dict[str, str]:
+    """The drug-term request main sent at 03fd911: four name fields OR-joined, no application-type clause.
+
+    Written out rather than derived from `A.OPENFDA_DRUG_FIELDS`, which this change extended.
+    """
+    quoted = '"' + drug_norm.replace('"', ' ') + '"'
+    fields = ('openfda.generic_name', 'openfda.brand_name', 'products.brand_name', 'products.active_ingredients.name')
+    return {'search': ' OR '.join(f'{field}:{quoted}' for field in fields), 'limit': '100'}
+
+
+def _fda_app(app_no: str, sponsor: str, brand: str, **extra: Any) -> dict[str, Any]:
+    return {
+        'application_number': app_no,
+        'sponsor_name': sponsor,
+        'products': [{'brand_name': brand}],
+        'submissions': [{'submission_type': 'ORIG', 'submission_status': 'AP', 'submission_status_date': '20220301'}],
+        **extra,
+    }
+
+
+def _drug_record(results: list[dict[str, Any]], total: int | None = None) -> dict[str, Any]:
+    return {
+        'status': 200,
+        'body': {'meta': {'results': {'total': len(results) if total is None else total}}, 'results': results},
+    }
+
+
+def test_openfda_drug_query_searches_substance_name_and_innovator_applications_only() -> None:
+    import requests
+
+    params = A.drug_query_params('pembrolizumab')
+    phrase = '"pembrolizumab"'
+    assert params == {
+        'search': (
+            f'(openfda.generic_name:{phrase} OR openfda.brand_name:{phrase} OR openfda.substance_name:{phrase} '
+            f'OR products.brand_name:{phrase} OR products.active_ingredients.name:{phrase}) '
+            'AND (application_number:NDA* application_number:BLA*)'
+        ),
+        'limit': '100',
+    }
+    assert 'openfda.substance_name' in A.OPENFDA_DRUG_FIELDS
+    # What each transport sends: the stdlib fallback's urlencode and requests' own encoding (the
+    # `requests.Session` path) give the same query string. No literal `+` is in the value, so none is
+    # sent as `%2B`; every space, the OR and AND separators and the one between the two wildcards
+    # included, is sent as `+`; parentheses, colons, quotes and `*` are percent-encoded.
+    assert '+' not in params['search']
+    stdlib_qs = urllib.parse.urlencode(params)
+    sent = requests.Request('GET', A.OPENFDA_DRUGSFDA, params=params).prepare().url
+    assert sent == f'{A.OPENFDA_DRUGSFDA}?{stdlib_qs}'
+    assert '%2B' not in sent
+    assert sent.count('+') == params['search'].count(' ')
+    assert '%29+AND+%28application_number%3ANDA%2A+application_number%3ABLA%2A%29&limit=100' in sent
+    assert urllib.parse.parse_qs(urllib.parse.urlsplit(sent).query)['search'] == [params['search']]
+
+
+def test_cache_acquired_with_the_previous_drug_query_form_is_refused_until_refetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / 'previous_form_cache'
+    with monkeypatch.context() as m:
+        m.setattr(A, 'drug_query_params', _previous_drug_query_params)
+        F.acquire_fixture_cache(cache)  # acquired, frozen and loaded under the previous form
+    assert A.drug_query_params('lumirafenib') != _previous_drug_query_params('lumirafenib')
+
+    ctgov_log = A.ResponseLog(A.raw_log_path(cache, 'ctgov'))
+    fda_log = A.ResponseLog(A.raw_log_path(cache, 'openfda'))
+    studies = A.studies_from_ctgov_records(ctgov_log.records, F.NCT_IDS)
+    planned = sorted({d for s in studies.values() for d in A.extract_drug_candidates(s)})
+    assert 'lumirafenib' in planned and 'floodedgeneric' in planned
+    # Every planned drug-query record, a settled 404 included, was made with the previous form.
+    stale = A.stale_openfda_drug_queries(fda_log.records, ctgov_log.records, F.NCT_IDS)
+    assert stale == sorted(A.drug_query_key(d) for d in planned)
+    with pytest.raises(A.CacheIntegrityError, match='earlier query form'):
+        A.load_frozen_cache(cache)
+    with pytest.raises(A.CacheIntegrityError, match='earlier query form'):
+        A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
+
+    # The openfda stage re-sends exactly the stale drug queries, in today's form; the NCT-ID queries
+    # (unchanged) are reused.
+    calls: list[str] = []
+    throttle = A.Throttle(min_interval=0.55, sleep=lambda _: None)
+    A.fetch_openfda(F.NCT_IDS, studies, fda_log, F.stub_get(calls), throttle)
+    sent = [json.loads(c.split('?', 1)[1])['search'] for c in calls]
+    assert sorted(sent) == sorted(A.drug_query_params(d)['search'] for d in planned)
+    A.freeze_cache(cache, F.NCT_IDS, frozen_at=F.GENERATED_AT)
+    loaded = A.load_frozen_cache(cache)
+    for drug in planned:
+        assert loaded.openfda[A.drug_query_key(drug)]['params'] == A.drug_query_params(drug)
+
+
+def test_is_abbreviated_application_reads_the_prefix_without_regard_to_case_or_padding() -> None:
+    for app_no in ('ANDA990543', 'anda990543', 'Anda990543', '  ANDA990543\t', 'ANDA 990543'):
+        assert E.is_abbreviated_application(app_no), app_no
+    for app_no in ('NDA987610', 'BLA987620', 'nda987610', ' NDA987610 ', 'XANDA990543', 'AND990543', ''):
+        assert not E.is_abbreviated_application(app_no), app_no
+
+
+def test_anda_without_sponsor_agreement_is_set_aside_by_rule_and_leaves_no_live_candidate() -> None:
+    nct = 'NCT99000001'
+    study = F._make_study(nct, title='Fictional study of ostravinib', lead_sponsor='Fictional Trial Sponsor Inc',
+                          drugs=['Ostravinib'])
+    assert A.extract_drug_candidates(study) == ['ostravinib']
+    # One result (total 1), far below the flood threshold: the flood rule cannot be what sets it aside.
+    records = {
+        f'openfda/nct/{nct}': {'status': 404, 'body': {'error': {'code': 'NOT_FOUND'}}},
+        A.drug_query_key('ostravinib'): _drug_record([_fda_app('ANDA990543', 'THIRD PARTY GENERICS LTD', 'OSTRAVINIB')]),
+    }
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    assert len(links) == 1
+    link = links[0]
+    assert (link['target_id'], link['citation_type']) == ('ANDA990543', 'OPENFDA_SPONSOR_DRUG_CANDIDATE')
+    assert link['automated_validation'] == 'rejected_by_rule'
+    assert link['validation_reasons'][0] == (
+        "ANDA990543 is an abbreviated new drug application (ANDA), a generic approval that does not disclose "
+        "the trial's investigational drug, and its FDA applicant does not match trial sponsor/collaborator"
+    )
+    assert link['validation_reasons'][1].startswith(f'no submission of ANDA990543 cites {nct}')
+    assert link['detail']['sponsor_agreement'] is False
+    assert link['detail']['query_total_applications'] == 1 < E.OPENFDA_DRUG_FLOOD_THRESHOLD
+    assert (link['publication_or_action_date'], link['date_precision']) == (None, 'missing')
+    assert E.link_problems(link) == []
+    # Set aside, the route is a completed negative rather than a candidate awaiting review.
+    cell = C.openfda_drugsfda_cell(nct, {'status': 200, 'body': study}, study, records, links, True)
+    assert cell['state'] == 'no_candidate_in_completed_scope'
+    assert cell['detail']['n_rejected_by_rule'] == 1
+
+
+def test_guard_sponsors_own_anda_stays_a_reviewable_candidate() -> None:
+    # Guard (passes before and after the ANDA rule): sponsor agreement is read first, so an ANDA held
+    # by the trial's own sponsor is still a candidate for review.
+    nct = 'NCT99000002'
+    study = F._make_study(nct, title='Fictional generic-maker study', lead_sponsor='Fictional Generics Pharma Inc',
+                          drugs=['Ostravinib'])
+    records = {
+        A.drug_query_key('ostravinib'): _drug_record(
+            [_fda_app('ANDA990544', 'FICTIONAL GENERICS PHARMA INC', 'OSTRAVINIB')]),
+    }
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    assert [(x['target_id'], x['automated_validation']) for x in links] == [('ANDA990544', 'not_validated')]
+    assert links[0]['detail']['sponsor_agreement'] is True
+    assert E.link_problems(links[0]) == []
+
+
+def test_guard_nda_and_bla_without_sponsor_agreement_stay_reviewable_candidates() -> None:
+    # Guard (passes before and after the ANDA rule): an innovator application held by another
+    # applicant (a licensee or acquirer) is still a candidate for review below the flood threshold.
+    nct = 'NCT99000003'
+    study = F._make_study(nct, title='Fictional licensing study', lead_sponsor='Fictional Trial Sponsor Inc',
+                          drugs=['Ostravinib'])
+    records = {
+        A.drug_query_key('ostravinib'): _drug_record([
+            _fda_app('NDA987601', 'ACQUIRER PHARMA INC', 'OSTRAVIX'),
+            _fda_app('BLA987602', 'LICENSEE BIOLOGICS LLC', 'OSTRAMAB'),
+        ]),
+    }
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    assert [(x['target_id'], x['automated_validation']) for x in links] == [
+        ('NDA987601', 'not_validated'), ('BLA987602', 'not_validated'),
+    ]
+    assert all(x['detail']['sponsor_agreement'] is False for x in links)
+    assert all(x['validation_reasons'][0].startswith('candidate NDA/BLA matched on investigational drug term without')
+               for x in links)
+
+
+def test_guard_flooded_nda_without_sponsor_agreement_keeps_the_flood_rule() -> None:
+    # Guard (passes before and after the ANDA rule): the fixture's flooded query returns ANDAs, which
+    # the ANDA rule now sets aside first, so the flood rule is pinned here on NDA and BLA results.
+    nct = 'NCT99000005'
+    study = F._make_study(nct, title='Fictional flooded study', lead_sponsor='Fictional Trial Sponsor Inc',
+                          drugs=['Ostravinib'])
+    apps = [_fda_app(f'NDA9876{i:02d}', f'Innovator Maker {i}', 'OSTRAVINIB') for i in range(24)]
+    apps.append(_fda_app('BLA987699', 'Biologic Maker', 'OSTRAVINIB'))
+    records = {A.drug_query_key('ostravinib'): _drug_record(apps)}
+    assert len(apps) == E.OPENFDA_DRUG_FLOOD_THRESHOLD
+    links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+    assert len(links) == E.OPENFDA_DRUG_FLOOD_THRESHOLD
+    assert {x['automated_validation'] for x in links} == {'rejected_by_rule'}
+    assert all(x['validation_reasons'][0] == (
+        f"drug query 'ostravinib' matched {E.OPENFDA_DRUG_FLOOD_THRESHOLD} (>= {E.OPENFDA_DRUG_FLOOD_THRESHOLD}) "
+        'openFDA applications and FDA applicant does not match trial sponsor/collaborator'
+    ) for x in links)
+
+
+def test_one_link_per_application_prefers_the_query_the_anda_rule_does_not_set_aside() -> None:
+    nct = 'NCT99000004'
+    study = F._make_study(nct, title='Fictional two-term study', lead_sponsor='Fictional Trial Sponsor Inc',
+                          drugs=['Alphagenerin', 'Betagenerin'])
+    assert A.extract_drug_candidates(study) == ['alphagenerin', 'betagenerin']
+    # Two drug queries return the same ANDA in records fetched at different times (a resumed
+    # acquisition): only the later one lists the trial's sponsor among the labels' manufacturers.
+    plain = _fda_app('ANDA990545', 'THIRD PARTY GENERICS LTD', 'GENERIN')
+    with_sponsor = {**plain, 'openfda': {'manufacturer_name': ['Fictional Trial Sponsor Inc']}}
+
+    def kept(alpha_app: dict[str, Any], beta_app: dict[str, Any]) -> dict[str, Any]:
+        records = {
+            A.drug_query_key('alphagenerin'): _drug_record([alpha_app]),
+            A.drug_query_key('betagenerin'): _drug_record([beta_app]),
+        }
+        links = E.build_openfda_links(nct, study, records, E.trial_sponsor_match_keys(study))
+        assert [x['target_id'] for x in links] == ['ANDA990545']
+        assert links[0]['detail']['drug_queries_returning_application'] == ['alphagenerin', 'betagenerin']
+        return links[0]
+
+    # The first query in term order sets the ANDA aside by rule; the second's reviewable candidate is kept.
+    first_rejected = kept(plain, with_sponsor)
+    assert first_rejected['automated_validation'] == 'not_validated'
+    assert first_rejected['detail']['matched_drug'] == 'betagenerin'
+    assert first_rejected['detail']['sponsor_agreement'] is True
+    # Reversed, the reviewable candidate comes first and is kept over the later rejection.
+    second_rejected = kept(with_sponsor, plain)
+    assert (second_rejected['automated_validation'], second_rejected['detail']['matched_drug']) == (
+        'not_validated', 'alphagenerin')
+    # A record citing the trial outranks the ANDA rule's rejection of the same application.
+    cited = {**plain, 'submissions': [{**plain['submissions'][0], 'submission_public_notes': f'Study {nct}'}]}
+    confirmed = kept(plain, cited)
+    assert (confirmed['citation_type'], confirmed['automated_validation']) == ('OPENFDA_NCT_CITED', 'identifier_confirmed')
+    assert confirmed['detail']['matched_drug'] == 'betagenerin'
 
 
 def test_freeze_local_refuses_requested_ids_absent_from_the_local_records(tmp_path: Path) -> None:
