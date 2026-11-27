@@ -34,6 +34,13 @@ import check_dap_benchmarks_contract as cli_check  # noqa: E402
 from dap import artifacts, benchmarks  # noqa: E402
 from dap.demographics import extract_demographics  # noqa: E402
 from src import condition_mesh as cmesh  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
+
+# The fictional holdout index every CLI call is given (tests/fixtures/holdout_index/index.json). Its
+# holdouts (NCT99777701, NCT99777702) are in no DAP fixture, so the exclusion removes nothing and
+# every existing expectation holds; test_dap_holdouts.py adds a holdout.
+HOLDOUT_INDEX: Path = ROOT / "tests" / "fixtures" / "holdout_index" / "index.json"
+HOLDOUT_ARGS: list[str] = ["--holdout-index", str(HOLDOUT_INDEX)]
 
 
 def _write_mesh_sidecar(path: Path, lines: list[dict[str, Any]]) -> Path:
@@ -218,6 +225,7 @@ def test_build_contract_and_byte_stable_run_identity(tmp_path: Path) -> None:
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(out_a),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc_a == 0
@@ -236,6 +244,7 @@ def test_build_contract_and_byte_stable_run_identity(tmp_path: Path) -> None:
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(out_b),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc_b == 0
@@ -257,6 +266,7 @@ def test_build_contract_and_byte_stable_run_identity(tmp_path: Path) -> None:
             "2026-11-21",
             "--out",
             str(out_c),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc_c == 0
@@ -281,6 +291,7 @@ def test_build_contract_and_byte_stable_run_identity(tmp_path: Path) -> None:
                 "2026-11-21T12:00:00+00:00",
                 "--out",
                 str(out_d),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -325,6 +336,7 @@ def test_mesh_cells_are_one_per_descriptor_id_when_terms_differ(tmp_path: Path) 
                 "2026-11-21T00:00:00+00:00",
                 "--out",
                 str(out_dir),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -392,7 +404,7 @@ def test_containers_with_non_object_entries_are_refused_not_filtered(
     out_dir = tmp_path / "out"
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     rc = cli_build.main(
-        ["--records", str(tmp_path / "studies.json"), "--sponsor-rules", str(rules_path), "--out", str(out_dir)]
+        ["--records", str(tmp_path / "studies.json"), "--sponsor-rules", str(rules_path), "--out", str(out_dir), *HOLDOUT_ARGS]
     )
     assert rc == 1 and not out_dir.exists()
     assert "(first: index 1 is NoneType); refusing the input" in capsys.readouterr().err
@@ -515,6 +527,7 @@ def test_projected_or_incomplete_raw_records_are_refused(tmp_path: Path) -> None
             "2026-11-21T00:00:00+00:00",
             "--out",
             str(out_dir),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc == 0
@@ -662,6 +675,7 @@ def test_weekly_full_records_container_supported(tmp_path: Path) -> None:
                 "2026-11-21",
                 "--out",
                 str(out_dir),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -723,6 +737,7 @@ def _build_weekly_with_mesh(
             "2026-11-21T00:00:00+00:00",
             "--out",
             str(out_dir),
+            *HOLDOUT_ARGS,
         ]
     )
     return rc, out_dir
@@ -890,6 +905,7 @@ def _build_stamped_raw(
         "--records", str(container), *mesh,
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / f"{out_name}.aliases.csv")),
         "--generated-at", "2026-11-23T00:00:00+00:00", *extra, "--out", str(out_dir),
+        *HOLDOUT_ARGS,
     ])
     return rc, out_dir
 
@@ -931,6 +947,7 @@ def test_a_raw_build_without_a_matched_sidecar_records_its_build_date(tmp_path: 
         "--condition-mesh", str(_write_mesh_sidecar(tmp_path / "dir.mesh.jsonl.gz", lines)),
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "dir.aliases.csv")),
         "--generated-at", "2026-11-23T00:00:00+00:00", "--out", str(out_dir),
+        *HOLDOUT_ARGS,
     ]) == 0
     run = artifacts.load_dir(out_dir)["run.json"]
     assert (run["inputs"]["condition_mesh"]["provenance_check"], run["parameters"]["snapshot_date"]) == (
@@ -965,6 +982,7 @@ def _build_reference_cohort(tmp_path: Path, n_primary_race: int) -> dict[str, An
         "--records-dir", str(studies),
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / f"a{n_primary_race}.csv")),
         "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+        *HOLDOUT_ARGS,
     ]) == 0
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
@@ -1090,6 +1108,7 @@ def test_contract_checker_refuses_tampered_or_invariant_violating_builds(tmp_pat
                 "2026-11-21T00:00:00+00:00",
                 "--out",
                 str(valid),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -1176,6 +1195,7 @@ def test_contract_reports_non_integer_min_cell_trials_instead_of_raising(tmp_pat
                 "2026-11-21T00:00:00+00:00",
                 "--out",
                 str(valid),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -1225,6 +1245,7 @@ def test_contract_reports_non_integer_facility_counts_instead_of_raising(tmp_pat
                 "2026-11-21T00:00:00+00:00",
                 "--out",
                 str(valid),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -1286,6 +1307,7 @@ def test_contract_reports_non_object_trial_rows_and_cli_never_tracebacks(
                 "2026-11-21T00:00:00+00:00",
                 "--out",
                 str(valid),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -1335,6 +1357,7 @@ def test_generated_at_must_be_a_whole_utc_timestamp(
                 generated_at,
                 "--out",
                 str(tmp_path / name),
+                *HOLDOUT_ARGS,
             ]
         )
 
@@ -1382,7 +1405,7 @@ def test_snapshot_date_is_validated_recorded_and_part_of_the_run_identity(
     def build(snapshot_date: str, name: str) -> int:
         return cli_build.main(["--records-dir", str(studies_dir), "--sponsor-rules", str(rules_path),
                                "--generated-at", "2026-11-21T12:00:00Z", "--snapshot-date", snapshot_date,
-                               "--out", str(tmp_path / name)])
+                               "--out", str(tmp_path / name), *HOLDOUT_ARGS])
 
     for i, bad in enumerate(("2026-02-30", "garbage", "2026-11-01T00:00:00", "2026-11")):
         capsys.readouterr()
@@ -1454,6 +1477,7 @@ def test_unicode_line_separators_in_jsonl_roundtrip(tmp_path: Path) -> None:
                 "2026-11-22T12:00:00+00:00",
                 "--out",
                 str(out_dir),
+                *HOLDOUT_ARGS,
             ]
         )
         == 0
@@ -2016,6 +2040,7 @@ def test_a_table_of_arms_without_a_total_group_reads_no_counts(tmp_path: Path) -
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
         "--generated-at", "2026-11-21T00:00:00+00:00",
         "--out", str(out),
+        *HOLDOUT_ARGS,
     ]) == 0
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
@@ -2114,6 +2139,7 @@ def test_a_build_counts_and_checks_sex_compositions_withheld_for_the_group(tmp_p
         "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
         "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+        *HOLDOUT_ARGS,
     ]) == 0
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
@@ -2308,7 +2334,7 @@ def test_build_refuses_an_infinite_enrollment_and_writes_nothing(tmp_path: Path,
     records.write_text(json.dumps({"studies": [study, _measured_study("NCT99800043")]}), encoding="utf-8")
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     out_dir = tmp_path / "out"
-    rc = cli_build.main(["--records", str(records), "--sponsor-rules", str(rules_path), "--out", str(out_dir)])
+    rc = cli_build.main(["--records", str(records), "--sponsor-rules", str(rules_path), "--out", str(out_dir), *HOLDOUT_ARGS])
     assert rc == 1 and not out_dir.exists()
     assert "NCT99800042 lacks designModule.enrollmentInfo.count (a non-negative integer)" in capsys.readouterr().err
 
@@ -2898,6 +2924,7 @@ def test_a_build_counts_and_checks_a_sex_composition_read_from_one_class(tmp_pat
         "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
         "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+        *HOLDOUT_ARGS,
     ]) == 0
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
@@ -3009,6 +3036,7 @@ def test_a_build_counts_and_checks_an_arm_read_instead_of_a_numeric_total(tmp_pa
         "--records-dir", str(fx.write_studies_dir(studies, tmp_path / "studies")),
         "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")),
         "--generated-at", "2026-11-21T00:00:00+00:00", "--out", str(out),
+        *HOLDOUT_ARGS,
     ]) == 0
     loaded = artifacts.load_dir(out)
     assert artifacts.check_contract(loaded) == []
@@ -3209,7 +3237,7 @@ def _build_weekly(
     weekly_path.write_bytes(gzip.compress(json.dumps(weekly_doc).encode("utf-8"), mtime=0))
     argv = ["--demographics", str(weekly_path),
             "--sponsor-rules", str(fx.write_fictional_sponsor_rules(tmp_path / f"{name}.aliases.csv")),
-            "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / name)]
+            "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / name), *HOLDOUT_ARGS]
     if mesh_lines is not None:
         argv += ["--condition-mesh", str(_write_mesh_sidecar(tmp_path / f"{name}.mesh.jsonl.gz", mesh_lines))]
     if snapshot_date is not None:
@@ -3290,7 +3318,7 @@ def test_raw_records_snapshot_date_still_defaults_to_the_build_date(tmp_path: Pa
     studies_dir = fx.write_studies_dir(fx.build_fictional_cohort(), tmp_path / "studies")
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     assert cli_build.main(["--records-dir", str(studies_dir), "--sponsor-rules", str(rules_path),
-                           "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / "raw")]) == 0
+                           "--generated-at", "2026-11-23T09:00:00Z", "--out", str(tmp_path / "raw"), *HOLDOUT_ARGS]) == 0
     run = json.loads((tmp_path / "raw" / "run.json").read_text(encoding="utf-8"))
     assert run["parameters"]["snapshot_date"] == "2026-11-23"
 
@@ -3847,7 +3875,7 @@ def test_contract_refuses_malformed_stamps_recorded_for_a_raw_input(tmp_path: Pa
     records.write_text(json.dumps({"studies": [_measured_study("NCT99800046")]}), encoding="utf-8")
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     out_dir = tmp_path / "out"
-    assert cli_build.main(["--records", str(records), "--sponsor-rules", str(rules_path), "--out", str(out_dir)]) == 0
+    assert cli_build.main(["--records", str(records), "--sponsor-rules", str(rules_path), "--out", str(out_dir), *HOLDOUT_ARGS]) == 0
     loaded = artifacts.load_dir(out_dir)
     assert loaded["run.json"]["inputs"]["study_records"]["input_format"] == "json_studies"
     assert artifacts.check_contract(loaded) == []

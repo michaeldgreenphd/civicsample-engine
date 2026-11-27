@@ -449,13 +449,41 @@ when its lines carry none), `provenance_check`, `provenance_reason`,
 copies them into the site's `run.json`, and refuses a build whose
 `inputs.condition_mesh` lacks them (built before these checks existed).
 
+## Audit holdout exclusion (`--holdout-index`)
+
+The build and the site export both require `--holdout-index PATH`, the site's
+outcomes index (`clinical-trial-populations` `data/outcomes/index.json`); there
+is no default, and a run without it exits with usage and writes nothing. A trial
+whose `in_audit` is true there is an audit holdout and is **excluded**
+(`src/holdout_exclusion.py`): the snapshot's bytes are read and hashed as
+given, but each holdout's row is removed by its id as soon as the file, line or
+container is decoded, before any record check, attribution or count, so no
+stratum, count, sponsor table or per-trial row (`trials.jsonl.gz`) includes it.
+A response-log line drops it from both its requested and returned ids, and a
+`--condition-mesh` line of one is dropped before it is read. The index itself
+is read strictly: rows missing, an `in_audit` that is not exactly true or
+false, an id that is not `^NCT[0-9]{8}$`, or a repeated id or key refuse the
+run, with counts and row positions and never an id.
+
+`run.json` records what was done under `holdout_exclusion`:
+`rules_version`, `index_sha256` (of the index file's bytes),
+`holdouts_in_index` and `excluded_from_universe` (how many holdouts were in
+this snapshot and removed). No id and no path. The contract checker requires
+the stamp; the exporter refuses a build without a valid one, one whose
+`index_sha256` is not the given index's (the index changed since the build:
+rebuild), and one any of whose files names a holdout id. **A build made before
+this change, or outside the repository, has no stamp and is refused by the
+exporter until it is rebuilt.** The site `run.json` carries the stamp.
+
 ## Commands
 
 ```bash
 python3 scripts/build_dap_benchmarks.py --demographics data/demographics.json.gz \
-  --condition-mesh data/condition_mesh.jsonl.gz --out build/dap
+  --condition-mesh data/condition_mesh.jsonl.gz --out build/dap \
+  --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 python3 scripts/check_dap_benchmarks_contract.py build/dap
-python3 scripts/export_dap_benchmarks_site.py build/dap ../clinical-trial-populations/data/dap
+python3 scripts/export_dap_benchmarks_site.py build/dap ../clinical-trial-populations/data/dap \
+  --holdout-index ../clinical-trial-populations/data/outcomes/index.json
 python3 -m pytest tests/dap -q
 ```
 

@@ -3,9 +3,17 @@
 
 Manual offline build (never scheduled; makes zero network calls):
 
-  python3 scripts/build_dap_benchmarks.py --demographics demographics.json.gz --out build/dap
-  python3 scripts/build_dap_benchmarks.py --records-dir /path/to/ctgov_studies --out build/dap
-  python3 scripts/build_dap_benchmarks.py --records ctgov_responses.jsonl.gz --out build/dap
+  python3 scripts/build_dap_benchmarks.py --demographics demographics.json.gz --out build/dap --holdout-index INDEX
+  python3 scripts/build_dap_benchmarks.py --records-dir /path/to/ctgov_studies --out build/dap --holdout-index INDEX
+  python3 scripts/build_dap_benchmarks.py --records ctgov_responses.jsonl.gz --out build/dap --holdout-index INDEX
+
+``--holdout-index`` (required, no default) is the site's outcomes index
+(clinical-trial-populations ``data/outcomes/index.json``). A trial whose
+``in_audit`` is true there is an audit holdout and is excluded: its row of the
+snapshot (and its condition_mesh line) is removed by id before any other
+processing, so no stratum, count, sponsor table or per-trial row includes it,
+and run.json ``holdout_exclusion`` records how many were removed
+(``src/holdout_exclusion.py``).
 
 Raw inputs must be complete API v2 records (no ``fields=`` projection); the
 audit caches under ``docs/audits/outcomes_results_structure/`` are projected
@@ -29,6 +37,7 @@ if str(ROOT) not in sys.path:
 
 from dap import artifacts, benchmarks  # noqa: E402
 from src import full_records  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
 
 
 # Repository directories whose modules count as producing code.
@@ -241,7 +250,23 @@ def main(argv: list[str] | None = None) -> int:
         default=ROOT / "build" / "dap",
         help="Output directory for the DAP benchmark artifact family (default: build/dap)",
     )
+    ap.add_argument(
+        "--holdout-index",
+        type=Path,
+        required=True,
+        help=(
+            "The site's outcomes index (clinical-trial-populations data/outcomes/index.json); trials whose "
+            "in_audit is true are audit holdouts and are excluded from the build. Required; no default"
+        ),
+    )
     args = ap.parse_args(argv)
+
+    # The holdout index is read first: a malformed one refuses the build before any input is read.
+    try:
+        exclusion = HX.HoldoutExclusion(HX.load_holdout_index(args.holdout_index))
+    except HX.HoldoutIndexError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
 
     if args.demographics is not None:
         input_path = args.demographics
@@ -273,8 +298,9 @@ def main(argv: list[str] | None = None) -> int:
             input_path,
             source_kind=source_kind,
             limit=args.limit,
+            exclusion=exclusion,
         )
-        mesh_map, mesh_meta = benchmarks.load_condition_mesh(args.condition_mesh)
+        mesh_map, mesh_meta = benchmarks.load_condition_mesh(args.condition_mesh, exclusion)
         mesh_meta = benchmarks.check_condition_mesh_provenance(mesh_map, mesh_meta, records, study_meta)
         # Weekly full records: the pull's own date (rows or sidecar), never the build date.
         snapshot_date = artifacts.resolve_snapshot_date(
@@ -301,8 +327,9 @@ def main(argv: list[str] | None = None) -> int:
             min_cell_trials=args.min_cell_trials,
             generated_at=generated_at,
             snapshot_date=snapshot_date,
+            holdout_exclusion=exclusion.stamp(),
         )
-    except (ValueError, OSError, KeyError) as exc:
+    except (ValueError, OSError, KeyError, HX.HoldoutIndexError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
     except SystemExit as exc:
@@ -337,6 +364,10 @@ def main(argv: list[str] | None = None) -> int:
         f"({den['posted_results_trials']['n']} posted, {den['us_site_trials']['n']} US-site), "
         f"{den['all_strata']['n']} strata, "
         f"{len(built['sponsors.json']['current_owner'])} canonical sponsors -> {args.out}"
+    )
+    print(
+        f"holdouts: {exclusion.n_excluded} in_audit holdout trial(s) excluded from the input "
+        f"({exclusion.index.n_holdouts} in the index)"
     )
     return 0
 

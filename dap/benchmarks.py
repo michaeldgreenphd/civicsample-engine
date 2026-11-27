@@ -42,6 +42,7 @@ from sponsors import adapter, audit_states, sponsor_roles
 from src import condition_mesh as cmesh
 from src import ethnicity_extractor, race_extractor
 from src import full_records
+from src.holdout_exclusion import HoldoutExclusion
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
 from src import table_selection
@@ -1855,7 +1856,40 @@ def search_page_problem(container: dict[str, Any]) -> str | None:
     return None
 
 
-def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str, Any]]:
+def record_nct_id(record: Any) -> Any:
+    """A study record's trial id, read with type checks only: a weekly record's ``nct_id``, else
+    ``protocolSection.identificationModule.nctId``; ``None`` when neither can be read.
+
+    Used to drop an in_audit holdout by its id before anything else of its record is read
+    (``drop_holdouts``). A record whose id cannot be read this way is kept for the record checks,
+    which refuse it.
+    """
+    if not isinstance(record, dict):
+        return None
+    if isinstance(record.get("nct_id"), str):
+        return record["nct_id"]
+    ps = record.get("protocolSection")
+    ident = ps.get("identificationModule") if isinstance(ps, dict) else None
+    return ident.get("nctId") if isinstance(ident, dict) else None
+
+
+def drop_holdouts(records: list[Any], exclusion: HoldoutExclusion | None) -> list[Any]:
+    """``records`` without the in_audit holdouts, each counted as removed from the build's universe.
+
+    Method (``src/holdout_exclusion.py``): the input file's bytes have been read and decoded, since
+    a holdout's row can only be found by its id, but this runs before any other processing of the
+    rows (record checks, metadata, attribution, strata, counts), so no aggregate, sponsor table or
+    per-trial row includes a holdout. With ``exclusion`` None (a library caller that supplies no
+    index) the records are returned unchanged; the build CLI always passes one.
+    """
+    if exclusion is None:
+        return records
+    return [r for r in records if not exclusion.exclude(record_nct_id(r))]
+
+
+def _response_log_studies(
+    envelope: dict[str, Any], where: str, exclusion: HoldoutExclusion | None = None
+) -> list[dict[str, Any]]:
     """Studies from one cached CT.gov API v2 response line, refusing a failed, altered or short one.
 
     Method (as feasibility benchmarks' ``_response_envelope_studies``): a
@@ -1874,6 +1908,12 @@ def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str
     the returned ids must equal the requested ids: none missing, extra or
     repeated. A line naming no requested ids is refused, as a short answer
     could not be detected.
+
+    With ``exclusion``, in_audit holdouts are removed from both the requested
+    ids and the returned studies (counted once each, by id) once the body is
+    decoded and before any study's content is read; the two lists are then
+    compared without them. A line that asked only for holdouts contributes
+    nothing.
     """
     status = envelope.get("status")
     if status != 200:
@@ -1919,6 +1959,11 @@ def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str
             f"{where}: response names no requested NCT ids (no ids, no filter.ids in url), "
             "so a response missing trials could not be detected"
         )
+    if exclusion is not None:
+        requested = exclusion.exclude_ids(requested)
+        studies = drop_holdouts(studies, exclusion)
+        if not requested and not studies:
+            return []
     returned = [_extract_core_metadata(s)["nct_id"] for s in studies]
     problems: list[str] = []
     if any(not _NCT_ID_RX.fullmatch(n) for n in returned):
@@ -1939,11 +1984,20 @@ def _response_log_studies(envelope: dict[str, Any], where: str) -> list[dict[str
     return studies
 
 
+def _refuse_only_holdouts(kept: list[Any], exclusion: HoldoutExclusion | None, path: Path) -> None:
+    """Refuse an input whose every study record was an in_audit holdout: nothing is left to build."""
+    if not kept and exclusion is not None and exclusion.n_excluded:
+        raise ValueError(
+            f"{path.name}: every study record is an in_audit holdout trial, which is excluded; nothing to build"
+        )
+
+
 def load_study_records(
     path: Path,
     *,
     source_kind: str = "auto",
     limit: int | None = None,
+    exclusion: HoldoutExclusion | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Load study records from weekly full-record JSON(.gz), a directory of raw
     CT.gov v2 JSON(.gz) files, or a JSONL(.gz) archive of CT.gov v2 studies /
@@ -1951,6 +2005,13 @@ def load_study_records(
 
     Refuses ``demographics.part*.json.gz`` / ``studies_tab.part*.json.gz`` site
     projections outright per ``AGENTS.md``.
+
+    ``exclusion`` (the build CLI always passes one) removes in_audit holdout
+    trials from this full snapshot: every format's bytes are read, hashed (the
+    input ``sha256`` is the file or directory as given) and decoded, and then
+    each holdout row is removed by its id (``drop_holdouts``) before any other
+    processing, so the record checks, the counts (``n_records``) and every
+    aggregate see only the other trials. ``limit`` takes the first N of those.
     """
     if _SITE_PART_NAME_RX.match(path.name):
         raise ValueError(
@@ -1980,7 +2041,8 @@ def load_study_records(
                 doc = doc["study"]
             if not isinstance(doc, dict):
                 raise ValueError(f"{fpath}: expected study JSON object")
-            studies.append(doc)
+            studies.extend(drop_holdouts([doc], exclusion))
+        _refuse_only_holdouts(studies, exclusion, path)
         _require_complete_records(studies, str(path))
         if limit is not None and limit > 0:
             studies = studies[:limit]
@@ -1999,6 +2061,8 @@ def load_study_records(
         recs, extracted_at, pipeline_commit = full_records.load(path)
         if stamp_problem := weekly_source_stamp_problem(extracted_at, pipeline_commit):
             raise ValueError(f"{path}: the container's {stamp_problem}")
+        recs = drop_holdouts(recs, exclusion)
+        _refuse_only_holdouts(recs, exclusion, path)
         recs = _require_study_objects(recs, f"{path}: data")
         _require_weekly_phases(recs, f"{path}: data")
         _require_weekly_lists(recs, f"{path}: data")
@@ -2035,7 +2099,7 @@ def load_study_records(
                 # line must be a whole, successful answer (_response_log_studies),
                 # and a trial returned by two lines is refused, not deduplicated.
                 if "body" in obj and "protocolSection" not in obj and "nct_id" not in obj:
-                    for s in _response_log_studies(obj, f"{path}:{line_no}"):
+                    for s in _response_log_studies(obj, f"{path}:{line_no}", exclusion):
                         nct = _extract_core_metadata(s)["nct_id"]
                         if nct in first_line_by_nct:
                             raise ValueError(
@@ -2044,7 +2108,8 @@ def load_study_records(
                         first_line_by_nct[nct] = line_no
                         ordered.append(s)
                     continue
-                ordered.append(obj)
+                ordered.extend(drop_holdouts([obj], exclusion))
+        _refuse_only_holdouts(ordered, exclusion, path)
         if not ordered:
             raise ValueError(f"{path}: holds no study records")
         _require_complete_records(ordered, str(path))
@@ -2067,6 +2132,8 @@ def load_study_records(
         recs, extracted_at, pipeline_commit = full_records.load(path)
         if stamp_problem := weekly_source_stamp_problem(extracted_at, pipeline_commit):
             raise ValueError(f"{path}: the container's {stamp_problem}")
+        recs = drop_holdouts(recs, exclusion)
+        _refuse_only_holdouts(recs, exclusion, path)
         recs = _require_study_objects(recs, f"{path}: data")
         _require_weekly_phases(recs, f"{path}: data")
         _require_weekly_lists(recs, f"{path}: data")
@@ -2103,6 +2170,8 @@ def load_study_records(
     pipeline_commit = container.get("pipeline_commit") if isinstance(container, dict) else None
     if stamp_problem := weekly_source_stamp_problem(extracted_at, pipeline_commit):
         raise ValueError(f"{path}: the container's {stamp_problem}")
+    studies_list = drop_holdouts(studies_list, exclusion)
+    _refuse_only_holdouts(studies_list, exclusion, path)
     if not studies_list:
         raise ValueError(f"{path}: holds no study records")
     _require_complete_records(studies_list, str(path))
@@ -2187,6 +2256,7 @@ def snapshot_date_problem(value: Any) -> str | None:
 
 def load_condition_mesh(
     path: Path | None,
+    exclusion: HoldoutExclusion | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
     """Load optional ``condition_mesh.jsonl.gz`` sidecar keyed by ``nct_id``.
 
@@ -2195,6 +2265,12 @@ def load_condition_mesh(
     Each entry keeps the line's ``MESH_RUN_STAMP_KEYS`` (``None`` when a line
     carries none) next to its MeSH fields; ``check_condition_mesh_provenance``
     checks them against the study records before the build uses the sidecar.
+
+    With ``exclusion``, a line whose ``nct_id`` is an in_audit holdout is
+    dropped as soon as the line is decoded, before its state, descriptors or
+    stamps are read; it is not counted again (the sidecar is a per-trial input
+    beside the universe, not the universe), and ``n_lines`` / ``state_counts``
+    count the other lines. The file's ``sha256`` is still that of its bytes.
     """
     if path is None:
         return {}, None
@@ -2212,6 +2288,8 @@ def load_condition_mesh(
             if not isinstance(row, dict):
                 raise ValueError(f"{path}:{line_no}: expected JSON object")
             nct_id = row.get("nct_id")
+            if exclusion is not None and exclusion.is_holdout(nct_id):
+                continue
             state = row.get("state")
             if not isinstance(nct_id, str) or not nct_id:
                 raise ValueError(f"{path}:{line_no}: missing nct_id")

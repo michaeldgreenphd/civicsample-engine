@@ -31,6 +31,14 @@ import build_dap_benchmarks as cli_build  # noqa: E402
 import export_dap_benchmarks_site as site_export  # noqa: E402
 from dap import artifacts  # noqa: E402
 from src import condition_mesh as cmesh  # noqa: E402
+from src import holdout_exclusion as HX  # noqa: E402
+
+# The fictional holdout index every CLI call is given (tests/fixtures/holdout_index/index.json). Its
+# holdouts (NCT99777701, NCT99777702) are in no DAP fixture, so the exclusion removes nothing and
+# every existing expectation holds; test_dap_holdouts.py adds a holdout.
+HOLDOUT_INDEX: Path = ROOT / "tests" / "fixtures" / "holdout_index" / "index.json"
+HOLDOUT_ARGS: list[str] = ["--holdout-index", str(HOLDOUT_INDEX)]
+HOLDOUT = HX.load_holdout_index(HOLDOUT_INDEX)
 
 
 @pytest.fixture(scope="module")
@@ -50,6 +58,7 @@ def verified_build(tmp_path_factory: pytest.TempPathFactory) -> Path:
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(out),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc == 0
@@ -60,7 +69,7 @@ def test_site_export_projects_verified_files_and_preserves_summary_counts(
     verified_build: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     site_dir = tmp_path / "site" / "dap"
-    assert site_export.main([str(verified_build), str(site_dir)]) == 0
+    assert site_export.main([str(verified_build), str(site_dir), *HOLDOUT_ARGS]) == 0
     printed = capsys.readouterr().out
     assert "summary.json" in printed and "total; wrote" in printed
 
@@ -113,12 +122,13 @@ def test_site_manifest_carries_verified_condition_mesh_provenance(tmp_path: Path
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(build),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc == 0
 
     site_dir = tmp_path / "site" / "dap"
-    site_export.export_site(build, site_dir)
+    site_export.export_site(build, site_dir, holdout_index=HOLDOUT)
     build_mesh = json.loads((build / "run.json").read_text(encoding="utf-8"))["inputs"]["condition_mesh"]
     site_mesh = json.loads((site_dir / "run.json").read_text(encoding="utf-8"))["inputs"]["condition_mesh"]
     assert site_mesh == {k: build_mesh[k] for k in ("n_lines", "sha256", *site_export.MESH_PROVENANCE_KEYS)}
@@ -141,8 +151,8 @@ def test_site_run_records_exporter_provenance_and_content_derived_id(
 ) -> None:
     out_a = tmp_path / "a" / "dap"
     out_b = tmp_path / "b" / "dap"
-    site_export.export_site(verified_build, out_a)
-    site_export.export_site(verified_build, out_b)
+    site_export.export_site(verified_build, out_a, holdout_index=HOLDOUT)
+    site_export.export_site(verified_build, out_b, holdout_index=HOLDOUT)
     run_a = json.loads((out_a / "run.json").read_text(encoding="utf-8"))
 
     # The exporter's own provenance, over its import closure, beside the build's producer block.
@@ -171,7 +181,7 @@ def test_site_run_records_exporter_provenance_and_content_derived_id(
     changed = {**exp, "source_sha256": "0" * 64}
     monkeypatch.setattr(site_export, "exporter_info", lambda: changed)
     out_c = tmp_path / "c" / "dap"
-    site_export.export_site(verified_build, out_c)
+    site_export.export_site(verified_build, out_c, holdout_index=HOLDOUT)
     run_c = json.loads((out_c / "run.json").read_text(encoding="utf-8"))
     assert run_c["build_run_id"] == run_a["build_run_id"]
     assert run_c["exporter"] == changed
@@ -196,6 +206,7 @@ def test_limited_diagnostic_build_is_never_exported(
             "2026-11-21T12:00:00+00:00",
             "--out",
             str(limited),
+            *HOLDOUT_ARGS,
         ]
     )
     assert rc == 0  # a valid diagnostic build: the contract does not reject it
@@ -205,10 +216,10 @@ def test_limited_diagnostic_build_is_never_exported(
 
     # The exporter refuses it and leaves the existing site export untouched.
     site_dir = tmp_path / "site" / "dap"
-    site_export.export_site(verified_build, site_dir)
+    site_export.export_site(verified_build, site_dir, holdout_index=HOLDOUT)
     before = {p.name: p.read_bytes() for p in site_dir.iterdir()}
     capsys.readouterr()
-    assert site_export.main([str(limited), str(site_dir)]) == 1
+    assert site_export.main([str(limited), str(site_dir), *HOLDOUT_ARGS]) == 1
     assert "limit_applied is 3; a --limit build is diagnostic only" in capsys.readouterr().err
     assert {p.name: p.read_bytes() for p in site_dir.iterdir()} == before
 
@@ -249,6 +260,7 @@ def test_build_without_git_records_null_provenance_and_is_never_exported(
                     "2026-11-21T12:00:00+00:00",
                     "--out",
                     str(out),
+                    *HOLDOUT_ARGS,
                 ]
             )
         # Null, never false; the build is still written for local diagnostics and passes the contract.
@@ -258,7 +270,7 @@ def test_build_without_git_records_null_provenance_and_is_never_exported(
         assert artifacts.check_contract(artifacts.load_dir(out)) == [], name
         # The site exporter refuses to publish it.
         with pytest.raises(ValueError, match="run.json: producer: .*no readable git provenance"):
-            site_export.export_site(out, tmp_path / f"site_{name}" / "dap")
+            site_export.export_site(out, tmp_path / f"site_{name}" / "dap", holdout_index=HOLDOUT)
         assert not (tmp_path / f"site_{name}").exists()
 
     # The contract allows only a 40-hex commit or null, and true/false/null cleanliness.
@@ -275,10 +287,10 @@ def test_build_without_git_records_null_provenance_and_is_never_exported(
     real = site_export.exporter_info()
     monkeypatch.setattr(site_export, "exporter_info", lambda: {**real, "uncommitted_changes": None})
     with pytest.raises(ValueError, match="exporter: .*no readable git provenance"):
-        site_export.export_site(verified_build, tmp_path / "site_exporter_null" / "dap")
+        site_export.export_site(verified_build, tmp_path / "site_exporter_null" / "dap", holdout_index=HOLDOUT)
     dirty = {**real, "commit": "b" * 40, "uncommitted_changes": True}
     monkeypatch.setattr(site_export, "exporter_info", lambda: dirty)
-    manifest = site_export.export_site(verified_build, tmp_path / "site_dirty" / "dap")
+    manifest = site_export.export_site(verified_build, tmp_path / "site_dirty" / "dap", holdout_index=HOLDOUT)
     assert manifest["exporter"]["uncommitted_changes"] is True
 
 
@@ -286,7 +298,7 @@ def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
     verified_build: Path, tmp_path: Path
 ) -> None:
     site_dir = tmp_path / "site" / "dap"
-    site_export.export_site(verified_build, site_dir)
+    site_export.export_site(verified_build, site_dir, holdout_index=HOLDOUT)
     before = {p.name: p.read_bytes() for p in site_dir.iterdir()}
 
     tampered = tmp_path / "tampered_build"
@@ -295,7 +307,7 @@ def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
     s_obj["denominators"]["all_trials"]["n"] = 999
     (tampered / "summary.json").write_bytes(artifacts.dump(s_obj))
 
-    assert site_export.main([str(tampered), str(site_dir)]) == 1
+    assert site_export.main([str(tampered), str(site_dir), *HOLDOUT_ARGS]) == 1
     assert {p.name: p.read_bytes() for p in site_dir.iterdir()} == before
     assert sorted(p.name for p in site_dir.parent.iterdir()) == ["dap"]
 
@@ -303,7 +315,7 @@ def test_tampered_or_incomplete_build_is_refused_and_leaves_site_intact(
     shutil.copytree(verified_build, missing)
     (missing / "trials.jsonl.gz").unlink()
     with pytest.raises(ValueError, match="failed producer contract"):
-        site_export.export_site(missing, tmp_path / "other_out")
+        site_export.export_site(missing, tmp_path / "other_out", holdout_index=HOLDOUT)
 
 
 def test_unrelated_target_directory_is_never_replaced(
@@ -313,7 +325,7 @@ def test_unrelated_target_directory_is_never_replaced(
     foreign.mkdir()
     (foreign / "demographics.part1.json.gz").write_bytes(b"keep")
     with pytest.raises(ValueError, match="refusing to replace it"):
-        site_export.export_site(verified_build, foreign)
+        site_export.export_site(verified_build, foreign, holdout_index=HOLDOUT)
     assert [p.name for p in foreign.iterdir()] == ["demographics.part1.json.gz"]
 
     borrowed_names = tmp_path / "borrowed"
@@ -322,14 +334,14 @@ def test_unrelated_target_directory_is_never_replaced(
         (borrowed_names / name).write_text("{}", encoding="utf-8")
     (borrowed_names / "run.json").write_text('{"run_id": "devices-2026-11-21-0123456789"}', encoding="utf-8")
     with pytest.raises(ValueError, match="does not name a DAP benchmark run"):
-        site_export.export_site(verified_build, borrowed_names)
+        site_export.export_site(verified_build, borrowed_names, holdout_index=HOLDOUT)
 
 
 def test_write_failure_restores_previous_site_export(
     verified_build: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     site_dir = tmp_path / "site" / "dap"
-    site_export.export_site(verified_build, site_dir)
+    site_export.export_site(verified_build, site_dir, holdout_index=HOLDOUT)
     before = {p.name: p.read_bytes() for p in site_dir.iterdir()}
 
     real_dump = artifacts.dump
@@ -343,7 +355,7 @@ def test_write_failure_restores_previous_site_export(
 
     monkeypatch.setattr(artifacts, "dump", failing_dump)
     with pytest.raises(OSError, match="simulated disk full"):
-        site_export.export_site(verified_build, site_dir)
+        site_export.export_site(verified_build, site_dir, holdout_index=HOLDOUT)
 
     assert {p.name: p.read_bytes() for p in site_dir.iterdir()} == before
     assert sorted(p.name for p in site_dir.parent.iterdir()) == ["dap"]
@@ -360,12 +372,12 @@ def test_weekly_build_without_source_stamps_is_built_but_not_published(tmp_path:
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     assert cli_build.main(["--demographics", str(weekly_path), "--sponsor-rules", str(rules_path),
                            "--generated-at", "2026-11-23T09:00:00Z", "--snapshot-date", "2026-11-21",
-                           "--out", str(build)]) == 0
+                           "--out", str(build), *HOLDOUT_ARGS]) == 0
     loaded = artifacts.load_dir(build)
     assert loaded["run.json"]["inputs"]["study_records"][missing] is None
     assert artifacts.check_contract(loaded) == []
     with pytest.raises(ValueError, match="a weekly build whose source container cannot name"):
-        site_export.export_site(build, tmp_path / "site" / "dap")
+        site_export.export_site(build, tmp_path / "site" / "dap", holdout_index=HOLDOUT)
     # The contract refuses a malformed stamp, as the build does.
     bad = copy.deepcopy(loaded)
     bad["run.json"]["inputs"]["study_records"]["pipeline_commit"] = "deadbeef1234"
@@ -379,8 +391,8 @@ def test_weekly_build_with_both_source_stamps_is_published(tmp_path: Path) -> No
     rules_path = fx.write_fictional_sponsor_rules(tmp_path / "aliases.csv")
     assert cli_build.main(["--demographics", str(weekly_path), "--sponsor-rules", str(rules_path),
                            "--generated-at", "2026-11-23T09:00:00Z", "--snapshot-date", "2026-11-21",
-                           "--out", str(build)]) == 0
-    site_export.export_site(build, tmp_path / "site" / "dap")
+                           "--out", str(build), *HOLDOUT_ARGS]) == 0
+    site_export.export_site(build, tmp_path / "site" / "dap", holdout_index=HOLDOUT)
     site_run = json.loads((tmp_path / "site" / "dap" / "run.json").read_text(encoding="utf-8"))
     assert site_run["inputs"]["study_records"]["pipeline_commit"] == fx.WEEKLY_PIPELINE_COMMIT
     assert site_run["inputs"]["study_records"]["extracted_at"] == fx.WEEKLY_EXTRACTED_AT
