@@ -492,10 +492,12 @@ through it; it is fixed on `main` (PR #116), so on `main` the cross-layer
 check reads the corrected marker too.
 `compute_ecosystem_baseline` and `write_ecosystem_baseline` keep
 SHA-256-keyed baselines in `tests/sponsors/expected_ecosystem_counts.json`.
-Since PR #119 each block also pins the index's `shared` column
-(`ECOSYSTEM_BASELINE_SECTIONS` ends with `shared`). Every shipped rule says
-`shared=no`, so the stored block's `shared` section is empty; it is recorded
-under `sections_backfilled` as added to the existing block.
+Since PR #119 each block also pins the index's `shared` column per
+organization, and since PR #124 per as-registered entity
+(`ECOSYSTEM_BASELINE_SECTIONS` ends with `shared` and `shared_entities`).
+Every shipped rule says `shared=no`, so both sections of the stored block
+are empty; each is recorded under `sections_backfilled` as added to the
+existing block.
 `sponsors/company_aliases.csv` and `tests/sponsors/expected_counts.json` are
 not changed.
 

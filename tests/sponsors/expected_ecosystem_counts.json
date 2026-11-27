@@ -613,6 +613,10 @@
         "shared": {
           "generated_at": "2026-11-27T02:23:34+00:00",
           "generated_by": "tests/sponsors/test_ecosystem.py (section added to an existing block)"
+        },
+        "shared_entities": {
+          "generated_at": "2026-11-27T03:17:01+00:00",
+          "generated_by": "tests/sponsors/test_ecosystem.py (section added to an existing block)"
         }
       },
       "sectors": {
@@ -642,7 +646,8 @@
           "lead": 8
         }
       },
-      "shared": {}
+      "shared": {},
+      "shared_entities": {}
     }
   },
   "fixture": {
