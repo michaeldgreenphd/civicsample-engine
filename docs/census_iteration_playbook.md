@@ -10,14 +10,13 @@ unreviewed AI output until a person reviews it.
 The commands use M1 (`scripts/index_trial_documents.py`), M4
 (`scripts/verify_and_plan_census_batch.py`), M2 as a library, and M3
 (`scripts/build_outcomes_shards.py`), so they need a checkout that carries
-all four. M1, M2 and M4 are on `main` (merged in `2932cac`, PR #112;
-`3f1bcb9`, PR #111; and `c144f12`, PR #113). M3 is on its unmerged branch,
-`antigravity/m3-outcomes-bundles`, which contains `main` as of `c144f12`, so
-a checkout of that branch carries all four. Later `main` commits, such as PR
-#118's M2 units fix, are not on it. The commands were checked against m1
-`4defbef` (the branch head merged in `2932cac`), m2 `b9a2ebc`, m4 `d68652a`
-and m3 `e2a8c21`; m3 `51f2ba8` differs from `e2a8c21` only by that merge of
-`main`, and M3's source and test files are identical.
+all four. All four are on `main` (merged in `2932cac`, PR #112; `3f1bcb9`,
+PR #111; `c144f12`, PR #113; and `f6cf568`, PR #114), so a checkout of
+`main` carries them. The commands were checked against m1 `4defbef` (the
+branch head merged in `2932cac`), m2 `b9a2ebc`, m4 `d68652a` and m3
+`e2a8c21`; m3 `51f2ba8`, the head merged in `f6cf568`, differs from
+`e2a8c21` only by a merge of `main`, and M3's source and test files are
+identical.
 
 ## 0. Before anything runs
 
@@ -31,8 +30,9 @@ and m3 `e2a8c21`; m3 `51f2ba8` differs from `e2a8c21` only by that merge of
 - Nothing on a public branch is private or offline.
 - Census output is not published on the site: on 2026-11-27 the
   investigator decided to keep it off the site for now, and publishing it
-  later is also the investigator's decision. M3 (outcomes bundles) stays on
-  its unmerged branch, and a bundle built from it stays on local disk.
+  later is also the investigator's decision. M3 (outcomes bundles) is on
+  `main` (PR #114), but a bundle built from it stays on local disk, and
+  nothing copies it to the site.
 - The `in_audit` holdout trials (those whose `in_audit` is true in the site's
   `data/outcomes/index.json`) are never opened, fetched, parsed, searched,
   quoted, cached or recorded. When you need to compare ids with the holdout
@@ -55,8 +55,8 @@ for p in census-work/x data/document_cache/x data/document_index_by_sha256.jsonl
 done
 ```
 
-The `data/` paths are M1's and M3's outputs. M1's are in `.gitignore` on
-`main` (PR #112); M3's are added by the m3 branch. On a checkout without
+The `data/` paths are M1's and M3's outputs. M1's and M3's are in
+`.gitignore` on `main` (PRs #112 and #114). On a checkout without
 those `.gitignore` lines they print `NOT IGNORED`: stop, and do not write
 there until they are ignored.
 Never `git add` anything under these paths.
@@ -567,11 +567,10 @@ EOF
 
 Never write the combined corpus into a tracked file or a public branch.
 
-### Step 6: outcomes bundles (M3; unmerged, local only)
+### Step 6: outcomes bundles (M3; local only)
 
-M3 is held on its branch, because census output is not published on the site
-(section 0.1). A bundle built from it is a local file tree, gitignored on the
-m3 branch, and nothing copies it to the site:
+Census output is not published on the site (section 0.1). A bundle M3 builds
+is a local file tree under `$RUN`, and nothing copies it to the site:
 
 ```bash
 python scripts/build_outcomes_shards.py \

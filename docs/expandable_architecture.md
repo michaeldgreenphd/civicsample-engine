@@ -5,8 +5,8 @@ work beyond the industry Phase 3 outcomes cohort: to trials sponsored by the
 NIH, other US federal agencies, NCTN cooperative groups, academic medical
 centers and non-profit foundations, and to any trial with posted protocol or
 statistical analysis plan documents. The modules arrived together in PR #97
-(head `dc38220`) and were split into separate branches. M1, M2 and M4 have
-since merged to `main` (PRs #112, #111 and #113); M3 is held on its branch.
+(head `dc38220`) and were split into separate branches. All four have since
+merged to `main` (PRs #112, #111, #113 and #114).
 None of them runs on a schedule, and none publishes anything to the site.
 
 [census_iteration_playbook.md](census_iteration_playbook.md) is the operating
@@ -23,13 +23,13 @@ merged on its own; M3 is the exception, because it imports M4.
 | `antigravity/m1-document-indexer` | `aa14a2d` | `src/document_indexer.py`, `scripts/index_trial_documents.py`, `tests/test_document_indexer.py`, `.gitignore` (the three M1 data paths) | none | merged to `main` (PR #112, merge commit `2932cac`; branch head `4defbef`) |
 | `antigravity/m2-population-ecosystem` | `aa14a2d` | `src/analysis_population_parser.py`, `sponsors/ecosystem.py`, `src/holdout_guard.py` (the holdout guard both modules import), `sponsors/ecosystem_rules.csv`, `tests/test_analysis_population_parser.py`, `tests/sponsors/test_ecosystem.py`, `tests/sponsors/expected_ecosystem_counts.json`, `tests/sponsors/fixtures/sponsors_fixture_ecosystem.csv` | none (it uses the existing `sponsors.adapter`, `sponsors.baseline` and `sponsors.sponsor_roles`) | merged to `main` (PR #111, merge commit `3f1bcb9`; branch head `b9a2ebc`) |
 | `antigravity/m4-citation-verifier` | `aa14a2d` | `src/citation_verifier.py`, `src/longitudinal_provenance.py`, `scripts/verify_and_plan_census_batch.py`, `tests/test_citation_verifier.py`, `tests/test_longitudinal_provenance.py`, `tests/test_verify_and_plan_census_batch.py` | none | merged to `main` (PR #113, merge commit `c144f12`; branch head `d68652a`) |
-| `antigravity/m3-outcomes-bundles` | `main` (it merged the m4 branch at `d68652a`, then `main` at `c144f12`) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths) | `src.citation_verifier` (M4) only | **held unmerged**: census output is not published on the site (section 7) |
-| `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | for review |
+| `antigravity/m3-outcomes-bundles` | `main` (it merged the m4 branch at `d68652a`, then `main` at `c144f12`) | `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py`, `tests/test_outcomes_layout.py`, `.gitignore` (the two M3 paths) | `src.citation_verifier` (M4) only | merged to `main` (PR #114, merge commit `f6cf568`; branch head `51f2ba8`) |
+| `antigravity/docs-platform` | `aa14a2d` | this file and `docs/census_iteration_playbook.md` | not applicable | merged to `main` (PR #115, merge commit `4804236`) |
 
 The revisions read for this document were m1 `4defbef` (merged to `main` in
 `2932cac`), m2 `b9a2ebc` (merged to `main` in `3f1bcb9`), m4 `d68652a`
-(merged to `main` in `c144f12`), m3 `e2a8c21` and `51f2ba8`, and `main` at
-`03fd911`. m3 `51f2ba8` merges `main` at `c144f12` into `e2a8c21`; of M3's
+(merged to `main` in `c144f12`), m3 `e2a8c21` and `51f2ba8` (merged to `main`
+in `f6cf568`), and `main` at `4804236`. m3 `51f2ba8` merges `main` at `c144f12` into `e2a8c21`; of M3's
 files only `.gitignore` changed (it gains M1's lines), and
 `src/outcomes_layout.py`, `scripts/build_outcomes_shards.py` and
 `tests/test_outcomes_layout.py` are identical, so a statement below made at
@@ -37,7 +37,7 @@ files only `.gitignore` changed (it gains M1's lines), and
 or on `main`, can change a detail stated here, so re-check a detail against
 the code before relying on it.
 
-M4, which M3 imports, is on `main`. Merging M3 is the owner's decision.
+M3 imports M4; both are on `main`.
 
 ## 2. Boundaries with the weekly pipeline
 
@@ -48,7 +48,7 @@ M4, which M3 imports, is on `main`. Merging M3 is the owner's decision.
   `sponsors/company_aliases.csv` or `tests/sponsors/expected_counts.json`.
 - No workflow runs any of the modules' scripts. Everything here runs by hand.
 - No module writes to the site repository. M3 writes a bundle tree on local
-  disk (by default `data/outcomes_bundles/`, which the m3 branch gitignores),
+  disk (by default `data/outcomes_bundles/`, which `.gitignore` on `main` ignores),
   and nothing copies that tree to the site.
 - CI (`.github/workflows/ci.yml`) runs each branch's tests on Python 3.11.
   None of these modules belongs to the LLM extraction stack that
@@ -354,8 +354,9 @@ under an in-scope id is read under that id.
   branch are published, whether or not the site shows them.
 - Census output is not published on the site. On 2026-11-27 the
   investigator decided to keep it off the site for now; publishing it later
-  is also the investigator's decision. No module writes to the site, and m3
-  stays unmerged. This does not make the census private: its rows stay
+  is also the investigator's decision. No module writes to the site. M3 is on
+  `main` (PR #114), but it only builds a local bundle tree, and nothing copies
+  a bundle to the site. This does not make the census private: its rows stay
   publicly readable on the branch above for as long as that branch exists.
 - New census work (plans, reports, new rows, merged corpora) goes to a
   gitignored local path, never to a tracked file and never to a public
@@ -491,6 +492,10 @@ through it; it is fixed on `main` (PR #116), so on `main` the cross-layer
 check reads the corrected marker too.
 `compute_ecosystem_baseline` and `write_ecosystem_baseline` keep
 SHA-256-keyed baselines in `tests/sponsors/expected_ecosystem_counts.json`.
+Since PR #119 each block also pins the index's `shared` column
+(`ECOSYSTEM_BASELINE_SECTIONS` ends with `shared`). Every shipped rule says
+`shared=no`, so the stored block's `shared` section is empty; it is recorded
+under `sections_backfilled` as added to the existing block.
 `sponsors/company_aliases.csv` and `tests/sponsors/expected_counts.json` are
 not changed.
 
