@@ -59,7 +59,9 @@ def test_a_shared_flip_that_moves_no_attribution_now_moves_the_baseline() -> Non
     assert "Fictional Solo" not in before["shared"]
     assert bl.diff_blocks(before, after) == [
         "shared.Fictional Solo: expected None got "
-        "{'rows': 1, 'any': 1, 'lead': 1, 'collaborator': 0}"
+        "{'rows': 1, 'any': 1, 'lead': 1, 'collaborator': 0}",
+        "shared_entities.fictional solo: expected None got "
+        "{'rows': 1, 'any': 1, 'lead': 1, 'collaborator': 0}",
     ]
 
 
@@ -78,8 +80,52 @@ def test_rows_catch_a_flip_that_leaves_trial_counts_alone() -> None:
     assert yes["shared"]["Fictional Pharma"] == {"rows": 2, "any": 1, "lead": 0, "collaborator": 1}
 
 
+def test_shared_entities_counts_a_partnership_literal_as_one_entity() -> None:
+    # The partnership literal is one as-registered entity claimed by two
+    # canonicals: `shared` lists it under each company, `shared_entities`
+    # once, with one row per canonical on each of its two trials.
+    block = bl.compute_baseline(_sponsors(), _rules())
+    assert block["shared_entities"] == {
+        "fictional pharma and example bio": {"rows": 4, "any": 2, "lead": 1, "collaborator": 1},
+    }
+    # "Fictional Pharma Inc." (entity "fictional pharma") is attributed by a
+    # shared=no rule: in `entities`, not here.
+    assert "fictional pharma" in block["entities"]
+
+
+def test_opposite_flips_on_two_entities_of_one_company_move_only_shared_entities() -> None:
+    # The case `shared` cannot see: Fictional Pharma registers under two
+    # entities, one lead row each. Swapping which of the two rules says
+    # shared=yes keeps every other section, `shared` included, identical.
+    sp = frame([
+        ("NCT99000005", "INDUSTRY", "lead", "Fictional Pharma Labs"),
+        ("NCT99000006", "INDUSTRY", "lead", "Fictional Pharma Research"),
+    ])
+
+    def rules(labs: str, research: str) -> pd.DataFrame:
+        return rules_df([
+            ("Fictional Pharma", "exact_literal", "Fictional Pharma Labs", "attribute", labs, NOTE),
+            ("Fictional Pharma", "exact_literal", "Fictional Pharma Research", "attribute", research, NOTE),
+        ])
+
+    labs_yes = bl.compute_baseline(sp, rules(labs="yes", research="no"))
+    research_yes = bl.compute_baseline(sp, rules(labs="no", research="yes"))
+    for section in ("index", "companies", "entities", "shared"):
+        assert labs_yes[section] == research_yes[section]
+    assert labs_yes["shared_entities"] == {
+        "fictional pharma labs": {"rows": 1, "any": 1, "lead": 1, "collaborator": 0}}
+    assert research_yes["shared_entities"] == {
+        "fictional pharma research": {"rows": 1, "any": 1, "lead": 1, "collaborator": 0}}
+    assert bl.diff_blocks(labs_yes, research_yes) == [
+        "shared_entities.fictional pharma labs: expected "
+        "{'rows': 1, 'any': 1, 'lead': 1, 'collaborator': 0} got None",
+        "shared_entities.fictional pharma research: expected None got "
+        "{'rows': 1, 'any': 1, 'lead': 1, 'collaborator': 0}",
+    ]
+
+
 def _write_legacy_block(path: Path, actual: dict) -> str:
-    """An expected-counts file whose one block predates the shared section."""
+    """An expected-counts file whose one block predates both shared sections."""
     sha = "f" * 64
     legacy = {k: actual[k] for k in ("index", "companies", "entities")}
     path.write_text(json.dumps({
@@ -119,4 +165,7 @@ def test_diff_against_a_block_without_the_section_says_so(tmp_path: Path) -> Non
     path = tmp_path / "expected_counts.json"
     sha = _write_legacy_block(path, actual)
     legacy = json.loads(path.read_text())["baselines"][sha]
-    assert bl.diff_blocks(legacy, actual) == ["shared: not in the earlier block, nothing to compare"]
+    assert bl.diff_blocks(legacy, actual) == [
+        "shared: not in the earlier block, nothing to compare",
+        "shared_entities: not in the earlier block, nothing to compare",
+    ]
