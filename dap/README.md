@@ -124,6 +124,46 @@ modified.
      before: the 2026-10-25 sex/gender table holds 537 reported
      participant-count rows read from the first of several classes, and none of
      the 81,094 records of the 2026-11-22 extraction carries the fields.
+   - Two other ways of reading the sex counts were measured and not adopted
+     (owner decision, 2026-11-27), so that they are not proposed again without
+     new evidence. The measurement used the module at `03fd911` on the 3,096
+     stored raw trials with a baseline measure, which publish 3,078
+     compositions and withhold 18.
+     - **Reading Female and Male from the whole-population (Total) group
+       column**, adding a several-class measure's classes as the extractors
+       do. On every trial but three, the Total column holds the counts the
+       parser already takes. The change would publish 15 more compositions,
+       withhold 1, and change 7 published shares by up to 0.024:
+       - **Counted twice:** 5 of the 15 add up to more than the table:
+         NCT02163759 and NCT02171429 (1,074 of 716, the trial's own 358 beside
+         a 716-participant population pooled with another trial), NCT03031782
+         (161 of 86), NCT03434379 (695 of 558) and NCT05209932 (262 of 233).
+         The 7 changed shares are trials whose first class already covers
+         everyone (NCT05445557, 21 counted of 12).
+       - **Withheld:** the 1 is NCT00596817, whose open-label-period rows post
+         `"NA"` at the Total beside an arm's numbers.
+       - **Read correctly:** NCT04078126 (19 and 16 of 35) and the 9 trials
+         whose classes add up exactly to the table. Adding classes, however,
+         replaces the parser's counts, which other pages read.
+       - **First class only:** reading the Total column from the first class
+         instead publishes the subgroup shares that
+         `sex_counts_from_one_class_of_several` withholds, such as
+         NCT05209932's child participants.
+     - **Publishing a share only when the counts make up the table's
+       Participants denominator.** This would withhold 24 compositions
+       published now and publish none withheld now. All 24 are tables whose
+       sex measure posts a Number Analyzed below the table:
+       - 14 lack a sex value for a few people (NCT02524730, 204 of 205);
+       - 3 are posted for an analysis subset (NCT02766608, mITT, 2,361 of
+         2,389);
+       - 7 cover the enrollment while the baseline total counts some people
+         more than once, among them the split-mouth trials NCT06238999,
+         NCT04708223 and NCT06166849.
+
+       In an in-memory build of the 3,102 stored records the raw loader
+       accepts, the participant-weighted female share would fall from 0.545
+       to 0.508. Almost all of that fall comes from one health-records cohort,
+       NCT04053075 (2,898,162 of 2,905,455).
    - Race measures containing Hispanic/Latino or combined race+ethnicity rows
      are classified `combined_race_ethnicity_quarantined`, excluded from all
      pooled OMB race distributions, and counted explicitly.
