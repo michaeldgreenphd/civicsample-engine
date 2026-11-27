@@ -179,8 +179,9 @@ so a collision rejects one push and loses nothing.
 **The sponsor rules file is schema, not data.** `sponsors/company_aliases.csv`
 changes only by deliberate commit, and every version of it is keyed by its own
 sha256. `tests/sponsors/expected_counts.json` holds one baseline block per
-rules sha — index size, per-company any/lead/collaborator, per-entity counts
-on the 2026-06-19 industry fixture — and
+rules sha — index size, per-company any/lead/collaborator, per-entity counts,
+and per-company `shared=yes` bridge rows and trials, on the 2026-06-19
+industry fixture — and
 `test_fixture_regression.py::test_regression_or_explicit_rebaseline` looks up
 the block for the rules as they stand.
 
@@ -189,7 +190,11 @@ fails**, asking for it to be committed alongside the rules change so the moved
 counts are reviewed in the same diff. The failure names the drift against the
 previous baseline and lists the rules the fixture cannot exercise — those work
 in production but are not regression-tested, and are reported rather than
-failed. `sponsors/baseline.py` computes all of it.
+failed. A block written before `sponsors/baseline.py` pinned one of its
+sections is completed the same way: the test checks the sections the block
+has, writes the missing ones into it (stamped under `sections_backfilled`)
+and fails until they are committed. `sponsors/baseline.py` computes all of
+it.
 
 The fixture file itself is pinned separately, by `FIXTURE_SHA256` in
 `tests/sponsors/conftest.py`, so the data under the baseline cannot move
