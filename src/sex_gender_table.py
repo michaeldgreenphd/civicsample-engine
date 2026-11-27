@@ -323,6 +323,85 @@ def parse_error_row(nct_id: Optional[str], enrollment: Any, snapshot_date: str) 
     return finish_row(_row_from_parsed(p, nct_id), enrollment, snapshot_date)
 
 
+def primary_measure(measures: Any) -> Optional[tuple[dict, sgp.ParsedMeasure]]:
+    """The measure the vendored parser takes Female and Male from, with that measure parsed
+    alone: (the measure dict, its sgp.ParsedMeasure), or None.
+
+    With several sex/gender measures the parser takes Female and Male from one primary measure
+    (the largest Female + Male, the first on ties) but Unknown, gender-diverse and ambiguous as
+    maxima across the measures, and a flag such as flag_multiclass_timepoint from any of them
+    (sgp.parse_trial). A check on the primary measure's layout or total therefore reads that
+    measure alone (sgp.parse_measure): it is the first selected measure whose own title, Female
+    and Male are the row's. None when `measures` is not a list or no selected measure matches.
+    The parser's own exceptions propagate; callers record them.
+
+    Moved here from dap/demographics.py (_primary_sex_measure) so DAP's raw path and the weekly
+    producer (primary_measure_field) identify the same measure. The parser is not changed.
+    """
+    if not isinstance(measures, list):
+        return None
+    parsed = sgp.parse_trial(measures, None)
+    for measure in sgp.select_sex_gender_measures(measures):
+        alone = sgp.parse_measure(measure)
+        if (alone.title, alone.female, alone.male) == (parsed.measure_title, parsed.n_female, parsed.n_male):
+            return measure, alone
+    return None
+
+
+def measure_counted_total(parsed: sgp.ParsedMeasure) -> float:
+    """The participants one parsed measure counts: its own Female, Male, Unknown, gender-diverse
+    and ambiguous counts added, an absent bucket as 0 (as the parser adds n_total_parsed over a
+    trial). For the primary measure this differs from the row's five counts when another measure
+    supplies a larger Unknown, gender-diverse or ambiguous count, which the row keeps as maxima."""
+    return sum(float(getattr(parsed, k) or 0.0) for k in ("female", "male", "unknown", "gender_diverse", "ambiguous"))
+
+
+# Why a weekly record's sex_primary_measure carries no reading (primary_measure_field).
+PRIMARY_MEASURE_ABSENT_REASONS: tuple[str, ...] = (
+    "no_sex_gender_measure", "parse_error", "primary_measure_not_identified",
+)
+
+
+def primary_measure_field(study: dict, row: dict) -> dict:
+    """The weekly record's `sex_primary_measure`: what DAP reads from the primary sex/gender
+    measure (primary_measure) on a raw record, for a weekly record, which keeps no measures.
+
+    flag_multiclass_timepoint  the primary measure's own flag (a standard layout posting
+                               several classes, of which the parser reads only the first), not
+                               the row's, which is set by any selected measure: NCT03726437's
+                               flag comes from its "Sexual Violence Victimization" measure.
+    n_total_parsed             the primary measure's own counted total (measure_counted_total),
+                               not the row's: the row's Unknown can come from another measure,
+                               and DAP's rule adds the primary measure's counts only.
+    absent_reason              None when both are read; otherwise why neither is, and both are
+                               None: no_sex_gender_measure (the row is not_reported),
+                               parse_error (the row is parse_error, or the measures could not be
+                               parsed), primary_measure_not_identified (no selected measure's own
+                               title, Female and Male are the row's).
+
+    `row` is the trial's sex/gender row (build_row or parse_error_row) from the same study, read
+    as posted, as the parser reads it. The parser is not changed.
+    """
+    def absent(reason: str) -> dict:
+        return {"flag_multiclass_timepoint": None, "n_total_parsed": None, "absent_reason": reason}
+
+    status = row.get("sex_report_status")
+    if status == "parse_error":
+        return absent("parse_error")
+    if status == "not_reported":
+        return absent("no_sex_gender_measure")
+    measures = ((study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}).get("measures")
+    try:
+        found = primary_measure(measures)
+    except Exception:  # noqa: BLE001 - recorded on the field, as build_row's failure is on the row
+        return absent("parse_error")
+    if found is None:
+        return absent("primary_measure_not_identified")
+    alone = found[1]
+    return {"flag_multiclass_timepoint": bool(alone.flag_multiclass_timepoint),
+            "n_total_parsed": measure_counted_total(alone), "absent_reason": None}
+
+
 def ordered(row: dict) -> dict:
     """The row in published column order (missing keys become None)."""
     return {c: row.get(c) for c in COLUMNS}

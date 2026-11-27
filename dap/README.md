@@ -107,10 +107,23 @@ modified.
      compositions, the counts no longer bound the race and ethnicity tables,
      which the baseline table's own denominator bounds instead: 8 stored race and
      7 ethnicity tables that had been withheld as exceeding the first class's sex
-     total are now read. Weekly records carry the lean row
-     without the flag, so this cannot be detected there; the 2026-10-25
-     sex/gender table holds 537 reported participant-count rows read from the
-     first of several classes.
+     total are now read. The lean row does not carry the flag, so a weekly
+     record carries what this check reads beside it (`src/extract_all.py`):
+     `sex_primary_measure`, the primary measure's own `flag_multiclass_timepoint`
+     and counted total (`n_total_parsed`, not the row's, whose Unknown can be
+     another measure's), and `baseline_participants`, the table's Participants
+     count. The weekly path applies the same rule to the same numbers
+     (`_primary_sex_measure_reading`), and a race or ethnicity table is then
+     bounded by that count, not by the legacy `sex` block. On the producer's
+     records for the 3,114 stored trials the raw loader accepts, the weekly
+     build withholds the same 14 compositions as the raw build (it had withheld
+     none); 8 race and 8 ethnicity tables withheld as exceeding the first
+     class's sex total are read, and 4 race and 3 ethnicity tables are withheld
+     as exceeding the table's count instead. A weekly record extracted before
+     these fields carries neither and keeps its first class's composition, as
+     before: the 2026-10-25 sex/gender table holds 537 reported
+     participant-count rows read from the first of several classes, and none of
+     the 81,094 records of the 2026-11-22 extraction carries the fields.
    - Race measures containing Hispanic/Latino or combined race+ethnicity rows
      are classified `combined_race_ethnicity_quarantined`, excluded from all
      pooled OMB race distributions, and counted explicitly.
@@ -123,8 +136,12 @@ modified.
      White 80 and Black 40 of 100, with no sex table, were published as
      `omb_compatible` shares of 120. None of the 3,345 stored raw trials changes:
      the 15 race and 8 ethnicity tables above their denominator all have a sex
-     total that already caught them. Weekly records carry no baseline table, so
-     only the sex total bounds them. A sex measure whose own `Number Analyzed`
+     total that already caught them. A weekly record carries no baseline table
+     but, from the change that added it, the table's Participants count
+     (`baseline_participants`), which bounds its race and ethnicity tables as on
+     the raw path (White 80 and Black 40 of 100, with no sex table, is withheld
+     on both, `tests/dap/test_weekly_baseline_fields.py`); on an older weekly
+     record only the sex total bounds them. A sex measure whose own `Number Analyzed`
      is below the baseline table's Participants counts fewer people than a race
      table covering everyone, so it does not bound one
      (`_sex_measure_analyzed_below_table`); its composition is kept as the share
@@ -136,7 +153,11 @@ modified.
      of 2,389) had been withheld as exceeding the sex total and are now read.
      Three are split-mouth trials (NCT06238999, NCT04708223, NCT06166849) that
      analyze their whole enrollment while the baseline Total counts each
-     participant three times; none posts a race table.
+     participant three times; none posts a race table. A weekly record does not
+     carry the sex measure's Number Analyzed, so there its sex total still
+     bounds the race and ethnicity tables: of the producer's records for the
+     3,114 stored trials, 6 race and 4 ethnicity tables the raw build reads are
+     withheld in the weekly build as exceeding it.
    - **Denominator A (`of_baseline_total`)**: `floor = count / baseline_total`,
      `unknown_bounds = [floor, (count + unknown + unmapped) / baseline_total]`,
      and `direction_settled` (`True` when both bounds lie strictly on the same
@@ -390,11 +411,34 @@ ethnicity `unknown_not_reported` exceeds its rows exactly when the block carries
 `denominator_balanced`. A total edited away from its rows was published as it stood.
 The race, ethnicity and sex extractors balance against one baseline participant
 total, so a record's balanced blocks must sum to the same number, and every other
-reported block to at least it (`weekly_shared_total_problem`). The weekly record
-does not carry that total, so a balanced ethnicity unknown is pinned exactly only
-when another block is balanced (3,256 of the 4,577 in the 2026-11-08 extraction),
-bounded above by a reported block otherwise (1,320), and unchecked in one record
-with no reported race or sex block.
+reported block to at least it (`weekly_shared_total_problem`). A record carries
+that total from the change that added `baseline_participants` (its `count`, the
+table's Participants count, which is the extractors' total whenever it is a
+number, since their enrollment fallback is reached only when the table posts
+none): every balanced block must then sum to exactly it and every other reported
+block to at least it. Blocks read through a per-trial exception
+(`src/baseline_overrides.py`, flag `baseline_override`) were balanced against the
+exception's own denominators and are not compared with the posted count. All 51
+balanced ethnicity blocks of the producer's records for the 3,114 stored trials
+are pinned so (40 had been pinned by another balanced block, 11 only bounded
+above). Without a count (an older record, or a table posting none, which the
+extractors balance against registered enrollment), a balanced ethnicity unknown is
+pinned exactly only when another block is balanced and is otherwise bounded above
+by a reported block: 3,256 and 1,320 of the 4,577 in the 2026-11-08 extraction,
+with one unchecked record that has no reported race or sex block, and 1,424 and
+537 of the 1,961 in the 2026-11-22 extraction, none unchecked.
+`baseline_participants` and `sex_primary_measure` are checked when a record
+carries them (`_weekly_baseline_fields_problem`, `_weekly_primary_measure_problem`):
+both or neither, each an object of exactly its children; a `count` a non-negative
+integer, or null with an `absent_reason` (`no_results_section`,
+`no_baseline_module`, `no_participants_denominator`), never a 0 for none; a reading
+a boolean `flag_multiclass_timepoint` and a finite, non-negative `n_total_parsed`,
+or both null with an `absent_reason` (`no_sex_gender_measure` exactly for a
+`not_reported` row, `parse_error` for a `parse_error` row, or
+`primary_measure_not_identified`). The total must lie between the row's Female +
+Male and its five counts added, as the primary measure's own counts do, so a field
+from another parse than its row is refused. A record carrying neither is read as
+before.
 A category entry flagged `unmapped` must be in the category the extractors give
 such rows (`other` for race, `unknown_not_reported` for ethnicity), since the
 analyzers subtract or drop flagged rows by that rule. A condition_mesh sidecar

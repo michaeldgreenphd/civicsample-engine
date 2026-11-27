@@ -16,6 +16,19 @@ parser (sex_gender_parser.py, vendored unchanged in src/):
                                   provenance, and enrollment_minus_parsed. It
                                   has no denominator balancing.
 
+Two readings of the baseline table ride beside it for dap/, which reads them
+on a raw record from the table itself (dap/README.md):
+
+  study["baseline_participants"]  the table's own Participants denominator,
+                                  never registered enrollment
+                                  (src/utils.baseline_participants_field)
+  study["sex_primary_measure"]    the primary sex/gender measure's own
+                                  flag_multiclass_timepoint and counted total
+                                  (src/sex_gender_table.primary_measure_field)
+
+Each is an object whose absent_reason says why a value is None. Both read the
+study as posted; the lean sex_gender row keeps neither.
+
 Alongside the output JSON the run writes sex_gender_raw_measures.jsonl.gz:
 one line per trial with the SELECTED sex/gender measures verbatim, so any
 later rule bump can re-parse every retained snapshot without a registry pull
@@ -35,7 +48,7 @@ from tqdm import tqdm
 
 from src.api_client import CTGovAPIClient
 from src.utils import (get_study_metadata, save_json, get_baseline_measures, get_overall_group_id,
-                       extract_demographic_breakdown, pipeline_commit)
+                       extract_demographic_breakdown, pipeline_commit, baseline_participants_field)
 from src.baseline_overrides import apply_baseline_override, flag_blocks
 from src.race_extractor import extract_race_data
 from src.ethnicity_extractor import extract_ethnicity_data
@@ -121,6 +134,14 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             logger.error(f"[{nct}] sex/gender analysis layer failed ({type(e).__name__}: {e}); block filed as parse_error")
             analysis = sga.analyze(sgt.parse_error_row(nct, None, snap), None, None)
 
+        # ── Two readings of the baseline table DAP needs and the lean row
+        # does not keep (dap/README.md): the table's own Participants
+        # denominator, and the primary sex/gender measure's own class flag and
+        # counted total. Both read the study as posted, as DAP's raw path and
+        # the parser do; absence is recorded with a reason, never as 0.
+        baseline_participants = baseline_participants_field(study)
+        sex_primary_measure = sgt.primary_measure_field(study, sex_gender_row)
+
         # Extract demographic breakdowns for interactive display
         baseline_measures = get_baseline_measures(read_study)
         overall_group_id = get_overall_group_id(read_study)
@@ -158,6 +179,11 @@ def extract_demographics_from_study(study: dict, pubmed_fetcher: Optional[PubMed
             # The newer analytical layer's lean block; the full block is rebuilt
             # from the retained raw measures into sex_gender_analysis.csv.gz.
             "sex_gender_analysis": sga.lean_block(analysis),
+            # {"count", "absent_reason"} (src/utils.baseline_participants_field)
+            "baseline_participants": baseline_participants,
+            # {"flag_multiclass_timepoint", "n_total_parsed", "absent_reason"}
+            # (src/sex_gender_table.primary_measure_field)
+            "sex_primary_measure": sex_primary_measure,
             # Add breakdowns for interactive dashboard
             "raceBreakdown": race_breakdown,
             "ethnicityBreakdown": ethnicity_breakdown,

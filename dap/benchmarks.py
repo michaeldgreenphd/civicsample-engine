@@ -41,6 +41,7 @@ from dap.geography import (
 from sponsors import adapter, audit_states, sponsor_roles
 from src import condition_mesh as cmesh
 from src import ethnicity_extractor, race_extractor
+from src.baseline_overrides import APPLIED_FLAG as BASELINE_OVERRIDE_APPLIED_FLAG
 from src import full_records
 from src import sex_gender_parser as sgp
 from src import sex_gender_table as sgt
@@ -925,7 +926,7 @@ def _unconverted_percentage_problems(module: dict[str, Any], root: str) -> list[
     every class repeats, else the table's Participants count (`table_selection.percentage_denominator`, with
     `get_total_baseline_participants` as the fallback), and `sum_measurements` reads a percentage with no
     denominator as a count. DAP drops registered enrollment from that fallback
-    (`demographics._study_without_protocol_enrollment_padding`), so a percentage table with none of the three
+    (`src.utils.study_without_protocol_enrollment_padding`), so a percentage table with none of the three
     was published as counts: White 60%, Asian 40% of a table whose Participants count is "NA" read as White
     60, Asian 40 of 100. The fallback is computed here from the table alone, which is what remains of it once
     enrollment is dropped. Run only on a table that passed the shape and group-reference checks. None of
@@ -1462,21 +1463,155 @@ def weekly_block_totals_problem(block: str, payload: dict[str, Any]) -> str | No
     return None
 
 
+# The two readings of the baseline table `src/extract_all.py` writes on every weekly record from this change on,
+# each an object with exactly these children: the table's own Participants count
+# (`src.utils.baseline_participants_field`) and the primary sex/gender measure's own class flag and counted
+# total (`sgt.primary_measure_field`). `dap/demographics.py` reads them where its raw path reads the table
+# (`_weekly_baseline_fields`). A record extracted before they existed carries neither and is read as before.
+# One carrying only one, or a malformed one, is refused (`_weekly_baseline_fields_problem`): a count read as
+# absent would drop a race or ethnicity bound and a class check with nothing reported, and a mistyped flag
+# kept a subgroup's sex composition.
+WEEKLY_BASELINE_FIELDS: dict[str, tuple[str, ...]] = {
+    "baseline_participants": ("count", "absent_reason"),
+    "sex_primary_measure": ("flag_multiclass_timepoint", "n_total_parsed", "absent_reason"),
+}
+# What `sgt.primary_measure_field` writes for a row with no selected measure, or one the parser could not read.
+_PRIMARY_MEASURE_ABSENT_FOR_STATUS: dict[str, str] = {
+    "not_reported": "no_sex_gender_measure",
+    "parse_error": "parse_error",
+}
+
+
+def _weekly_baseline_fields_problem(rec: dict[str, Any]) -> str | None:
+    """Why a weekly record's `baseline_participants` or `sex_primary_measure` is not as the producer writes it,
+    or `None` (also for a record extracted before either existed).
+
+    `src.utils.baseline_participants_field` writes `count` as the int `get_total_baseline_participants` reads
+    from the table's Participants denominator, or null with an `absent_reason` from
+    `src.utils.BASELINE_PARTICIPANTS_ABSENT_REASONS`, never both and never a 0 for none.
+    `sgt.primary_measure_field` writes a boolean `flag_multiclass_timepoint` and the measure's own finite,
+    non-negative `n_total_parsed`, or both null with an `absent_reason` from `sgt.PRIMARY_MEASURE_ABSENT_REASONS`.
+    A count that is not a whole non-negative number is refused, as the raw path refuses such a denominator
+    (`_mistyped_parts`). Records without the fields are not affected: none of the 81,094 records of the
+    2026-11-22 extraction carries them.
+    """
+    present = [key for key in WEEKLY_BASELINE_FIELDS if key in rec]
+    if not present:
+        return None
+    if len(present) < len(WEEKLY_BASELINE_FIELDS):
+        missing = next(key for key in WEEKLY_BASELINE_FIELDS if key not in rec)
+        return f"carries {present[0]} without {missing} (src/extract_all.py writes both)"
+    for key, children in WEEKLY_BASELINE_FIELDS.items():
+        value = rec[key]
+        if not isinstance(value, dict) or sorted(value) != sorted(children):
+            return f"{key} is not an object of exactly {', '.join(children)} (src/extract_all.py writes it so)"
+    count, reason = rec["baseline_participants"]["count"], rec["baseline_participants"]["absent_reason"]
+    if count is None:
+        if reason not in src_utils.BASELINE_PARTICIPANTS_ABSENT_REASONS:
+            return (
+                f"baseline_participants has no count and absent_reason {reason!r}, not one of "
+                f"{', '.join(src_utils.BASELINE_PARTICIPANTS_ABSENT_REASONS)}"
+            )
+    elif not _is_extractor_count(count):
+        return f"baseline_participants.count is {count!r}, not a non-negative integer or null"
+    elif reason is not None:
+        return f"baseline_participants has count {count} beside absent_reason {reason!r}"
+    flag, total, reason = (rec["sex_primary_measure"][k] for k in WEEKLY_BASELINE_FIELDS["sex_primary_measure"])
+    if reason is None:
+        if not isinstance(flag, bool):
+            return f"sex_primary_measure.flag_multiclass_timepoint is {type(flag).__name__}, not bool"
+        if not (
+            isinstance(total, (int, float)) and not isinstance(total, bool) and math.isfinite(total) and total >= 0
+        ):
+            return f"sex_primary_measure.n_total_parsed is {total!r}, not a finite non-negative number"
+    elif reason not in sgt.PRIMARY_MEASURE_ABSENT_REASONS:
+        return (
+            f"sex_primary_measure.absent_reason {reason!r} is not one of "
+            f"{', '.join(sgt.PRIMARY_MEASURE_ABSENT_REASONS)}"
+        )
+    elif flag is not None or total is not None:
+        return f"sex_primary_measure has absent_reason {reason!r} beside a reading"
+    return None
+
+
+def _weekly_primary_measure_problem(rec: dict[str, Any]) -> str | None:
+    """Why a weekly record's `sex_primary_measure` contradicts its own `sex_gender` row, or `None`.
+
+    Both come from one parse of the same measures (`src/extract_all.py`): a `not_reported` row has no measure
+    and a `parse_error` row none read (`_PRIMARY_MEASURE_ABSENT_FOR_STATUS`), and a measured row's primary
+    measure has the row's Female and Male, and Unknown, gender-diverse and ambiguous counts no larger than the
+    row's, which are maxima across the measures. So its counted total lies between the row's Female + Male and
+    the row's five counts added; a total outside them belongs to another parse (a row rewritten by a later rule
+    version) and would decide the class check on numbers the row does not hold. Checked after the row itself.
+    """
+    if "sex_primary_measure" not in rec:
+        return None
+    row, primary = rec["sex_gender"], rec["sex_primary_measure"]
+    status, reason = row["sex_report_status"], primary["absent_reason"]
+    want = _PRIMARY_MEASURE_ABSENT_FOR_STATUS.get(status)
+    if want is not None and reason != want:
+        return (
+            f"sex_primary_measure.absent_reason is {reason!r} for a {status} row "
+            f"(src/extract_all.py writes {want!r})"
+        )
+    if want is None and reason == "no_sex_gender_measure":
+        return f"sex_primary_measure.absent_reason is {reason!r}, but the row is {status} (it read a measure)"
+    if reason is None:
+        low = sum(float(row[k] or 0.0) for k in ("n_female", "n_male"))
+        high = sum(float(row[k] or 0.0) for k in _STATUS_COUNT_COLUMNS)
+        total = float(primary["n_total_parsed"])
+        if total < low - 1e-6 or total > high + 1e-6:
+            return (
+                f"sex_primary_measure.n_total_parsed is {total:g}, outside the {low:g} to {high:g} its sex_gender row "
+                "allows (the primary measure's Female and Male are the row's; its other counts at most the row's)"
+            )
+    return None
+
+
+def _weekly_baseline_pin(rec: dict[str, Any]) -> int | None:
+    """The baseline total every balanced block of a weekly record must sum to exactly, or `None`.
+
+    `baseline_participants.count` when the record carries a count, unless a block was read through a per-trial
+    exception (`src.baseline_overrides`, flag `baseline_override`): the exception gives the extractors its own
+    denominators (NCT07465926's 187,700 of a posted 224,048), while the count is the table as posted, as DAP's
+    raw path and the sex/gender parser read it. Call only on a record whose fields passed
+    `_weekly_baseline_fields_problem`.
+    """
+    table = rec.get("baseline_participants")
+    count = table.get("count") if isinstance(table, dict) else None
+    if not _is_extractor_count(count):
+        return None
+    if any(BASELINE_OVERRIDE_APPLIED_FLAG in (rec[block].get("flags") or []) for block in ("race", "ethnicity", "sex")):
+        return None
+    return count
+
+
 def weekly_shared_total_problem(rec: dict[str, Any]) -> str | None:
     """Why a weekly record's balanced race, ethnicity or sex totals contradict one another, or `None`.
 
     The three extractors fold a block's shortfall against one number, the trial's baseline participant
     total (`src.utils.get_total_baseline_participants`, called with the same Overall group by each). A
     balanced block therefore sums to exactly that total, and any other reported block to at least it,
-    since it is balanced only when its rows fall short. The weekly record does not carry the total, so
-    a balanced ethnicity block's unknown (whose shortfall the block does not record either) could be
-    raised to any larger value and still agree with its rows. It must now sum to what every other
-    balanced block sums to, and to no more than any reported block. A block counts as balanced when
-    its recorded shortfall is positive (race `unknown_inferred` plus `unknown_ethnicity_only`, sex
-    `unknown_inferred`) or, for ethnicity, when it carries `denominator_balanced`. Every one of the
-    80,890 weekly records keeps the rule; of their 4,577 balanced ethnicity blocks, 3,256 are pinned
-    exactly by another balanced block, 1,320 are bounded by a reported one, and 1 has no reported race
-    or sex block to check against.
+    since it is balanced only when its rows fall short. A balanced ethnicity block's unknown (whose
+    shortfall the block does not record) could otherwise be raised to any larger value and still agree
+    with its rows. A block counts as balanced when its recorded shortfall is positive (race
+    `unknown_inferred` plus `unknown_ethnicity_only`, sex `unknown_inferred`) or, for ethnicity, when it
+    carries `denominator_balanced`.
+
+    A record extracted from this change on carries that total (`baseline_participants.count`,
+    `src.utils.baseline_participants`): the table's own Participants count, which is the extractors'
+    total whenever it is a number, since their enrollment fallback is reached only when the table posts
+    none. Every balanced block must then sum to exactly it, and every other reported block to at least
+    it (`_weekly_baseline_pin`). Without a count (an older record, or a table posting none, when the
+    extractors balanced against registered enrollment), or for blocks read through a per-trial exception
+    that re-reads the denominators (`src/baseline_overrides.py`, flag `baseline_override`), a block must
+    sum to what every other balanced block sums to, and to no more than any reported block. Every one
+    of the 80,890 weekly records of the 2026-11-08 extraction keeps the rule; they carry no count, and of
+    their 4,577 balanced ethnicity blocks 3,256 are pinned exactly by another balanced block, 1,320 are
+    bounded by a reported one, and 1 has no reported race or sex block to check against. The producer's
+    records for the 3,114 stored raw CT.gov trials the raw loader accepts all keep the rule with the count,
+    which pins all 51 of their balanced ethnicity blocks (40 had been pinned by another balanced block, 11
+    only bounded above).
     """
     sums: dict[str, tuple[int, bool]] = {}
     race, eth, sex = rec["race"], rec["ethnicity"], rec["sex"]
@@ -1487,6 +1622,21 @@ def weekly_shared_total_problem(rec: dict[str, Any]) -> str | None:
         sums["ethnicity"] = (sum(eth["omb_totals"].values()), "denominator_balanced" in eth["flags"])
     if sex["reported"]:
         sums["sex"] = (sum(sex["totals"].values()), sex["unknown_inferred"] > 0)
+    pin = _weekly_baseline_pin(rec)
+    if pin is not None:
+        for block, (total, is_balanced) in sums.items():
+            if is_balanced and total != pin:
+                return (
+                    f"{block} is balanced to {total}, not to the baseline table's Participants count {pin} "
+                    "(baseline_participants; see weekly_shared_total_problem)"
+                )
+            if not is_balanced and total < pin:
+                return (
+                    f"{block} sums to {total}, below the baseline table's Participants count {pin} "
+                    "(baseline_participants), though a block is balanced whenever its rows fall short "
+                    "(see weekly_shared_total_problem)"
+                )
+        return None
     balanced = {block: total for block, (total, is_balanced) in sums.items() if is_balanced}
     if not balanced:
         return None
@@ -1637,7 +1787,7 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
     for block in ("race", "ethnicity"):
         if problem := weekly_block_flag_problem(block, rec[block]) or weekly_block_totals_problem(block, rec[block]):
             return problem
-    if problem := weekly_shared_total_problem(rec):
+    if problem := _weekly_baseline_fields_problem(rec) or weekly_shared_total_problem(rec):
         return problem
     status = rec["sex_gender"].get("sex_report_status")
     if status not in SEX_GENDER_STATES:
@@ -1687,6 +1837,8 @@ def _weekly_list_problem(rec: dict[str, Any]) -> str | None:
                 f"sex_gender.{column} is {row[column]!r}, but sgp.derive_outcomes gives {derived[column]!r} "
                 f"for status {status!r} and the row's counts"
             )
+    if problem := _weekly_primary_measure_problem(rec):
+        return problem
     for key, (entry_type, fields) in WEEKLY_LIST_FIELDS.items():
         if key not in rec:
             return f"has no {key} (src/utils.py always writes it)"

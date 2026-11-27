@@ -5,7 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 # Translation table that strips invisible Unicode characters commonly
 # inserted by ClinicalTrials.gov (zero-width space, joiner, etc.)
@@ -429,6 +429,111 @@ def get_total_baseline_participants(study: dict, overall_group_id: Optional[str]
             pass
 
     return None
+
+
+def reads_as_baseline_count(value: Any) -> bool:
+    """Whether get_total_baseline_participants reads `value` as a count:
+    int(float(str(value).replace(",", ""))) succeeds and the value is not None."""
+    if value is None:
+        return False
+    try:
+        int(float(str(value).replace(",", "")))
+    except (ValueError, TypeError, OverflowError):
+        return False
+    return True
+
+
+def study_without_protocol_enrollment_padding(study: dict) -> dict:
+    """Return a shallow view of a raw CT.gov study that prevents protocol enrollment
+    from padding baseline ``unknown_not_reported`` when ``baselineCharacteristicsModule``
+    posts no ``Participants`` denominator of its own.
+
+    Analytical assumption: the baseline denominator is the baseline table's own
+    participant population (from ``baselineCharacteristicsModule.denoms`` or the
+    table's rows), never registered protocol ``enrollmentInfo.count`` (which can
+    exceed the analyzed baseline cohort due to screen/randomization drop-off).
+
+    Enrollment is kept only when get_total_baseline_participants is sure to return a
+    baseline count before its enrollment fallback: some ``Participants`` denominator whose
+    last count parses (it reads the overall group's count, else the last one, denominator
+    by denominator). A denominator present with counts that do not parse (``"NA"``) had been
+    taken as usable, so the race and ethnicity tables were balanced to registered enrollment.
+
+    Moved here from dap/demographics.py so the weekly producer (baseline_participants_field)
+    and DAP's raw path read the denominator with one function.
+    """
+    baseline = (study.get("resultsSection") or {}).get("baselineCharacteristicsModule") or {}
+    has_baseline_participants_denom = any(
+        isinstance(d, dict)
+        and str(d.get("units") or "").lower() == "participants"
+        and isinstance(d.get("counts"), list)
+        and bool(d["counts"])
+        and isinstance(d["counts"][-1], dict)
+        and reads_as_baseline_count(d["counts"][-1].get("value"))
+        for d in (baseline.get("denoms") or [])
+    )
+    if has_baseline_participants_denom:
+        return study
+    protocol = study.get("protocolSection")
+    if not isinstance(protocol, dict):
+        return study
+    design = protocol.get("designModule")
+    if not isinstance(design, dict) or "enrollmentInfo" not in design:
+        return study
+    trimmed_design = {k: v for k, v in design.items() if k != "enrollmentInfo"}
+    trimmed_protocol = {**protocol, "designModule": trimmed_design}
+    return {**study, "protocolSection": trimmed_protocol}
+
+
+def baseline_participants(study: dict) -> Optional[int]:
+    """The baseline table's own Participants denominator, or None when it posts none
+    that reads as a number.
+
+    Read exactly as the race, ethnicity and legacy sex extractors read the total they
+    balance against (get_total_baseline_participants at the Overall group,
+    get_overall_group_id), but without that function's registered-enrollment fallback
+    (study_without_protocol_enrollment_padding): a table whose only Participants count is
+    "NA" has no baseline total, not its enrollment. Whenever this returns a number, it is
+    the number those extractors balanced against, because the fallback is never reached
+    then. DAP's raw path (dap/demographics.extract_demographics) calls it
+    `baseline_participants`, and the weekly record carries it (baseline_participants_field).
+    """
+    return get_total_baseline_participants(study_without_protocol_enrollment_padding(study),
+                                           get_overall_group_id(study))
+
+
+# Why a weekly record's baseline_participants has no count (baseline_participants_field).
+BASELINE_PARTICIPANTS_ABSENT_REASONS = ("no_results_section", "no_baseline_module", "no_participants_denominator")
+
+
+def baseline_participants_field(study: dict) -> dict:
+    """The weekly record's `baseline_participants`: {"count", "absent_reason"}.
+
+    count          baseline_participants(study): the baseline table's own Participants
+                   denominator as posted, an int; None when it has none.
+    absent_reason  None with a count; otherwise why there is none, never a zero and never
+                   the registered enrollment:
+                     no_results_section           the study has no results section
+                     no_baseline_module           its results have no baseline
+                                                  characteristics (or an empty one)
+                     no_participants_denominator  the baseline table posts no Participants
+                                                  count that reads as a number ("NA")
+
+    Read from the study as posted, as DAP's raw path reads it and as the sex/gender parser
+    reads its measures, not through a per-trial exception (src/baseline_overrides.py),
+    which re-reads the denominators for the extractors only; the extractors' blocks carry
+    that exception's flag. Every one of the 3,096 stored raw CT.gov trials with a
+    baseline measure has a count; of the 3,114 stored trials DAP's raw loader accepts,
+    2,908 have one and the other 206, which post no results, are no_results_section.
+    """
+    results = study.get("resultsSection")
+    if not isinstance(results, dict):
+        return {"count": None, "absent_reason": "no_results_section"}
+    module = results.get("baselineCharacteristicsModule")
+    if not (isinstance(module, dict) and module):
+        return {"count": None, "absent_reason": "no_baseline_module"}
+    count = baseline_participants(study)
+    return {"count": count, "absent_reason": None if count is not None else "no_participants_denominator"}
 
 ELIGIBILITY_SCHEMA_VERSION = "eligibility/1.0"
 
