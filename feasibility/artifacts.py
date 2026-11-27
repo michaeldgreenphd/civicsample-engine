@@ -35,8 +35,10 @@ from feasibility.benchmarks import (
     SPONSOR_REVIEW_STATES,
     UNCLASSIFIED_INDICATION,
     build_strata_and_sponsors,
+    ACCRUAL_WINDOW_DURATIONS,
     indication_pairs,
     summarize_cell,
+    untyped_window_counts,
 )
 from feasibility.metrics import (
     ACCRUAL_RATE_STATUSES,
@@ -102,11 +104,9 @@ PERCENTILE_BLOCK_KEYS = (
     "period1_completion_rate",
 )
 
-# `accrual.calendar_window_used` -> the `durations` entry that window was computed from.
-ACCRUAL_WINDOW_DURATION_KEYS = {
-    "start_to_primary_completion": "primary_completion",
-    "start_to_study_completion": "study_completion",
-}
+# `accrual.calendar_window_used` -> the `durations` entry that window was computed from (the mapping the
+# untyped-date recount uses too).
+ACCRUAL_WINDOW_DURATION_KEYS = ACCRUAL_WINDOW_DURATIONS
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -223,6 +223,20 @@ def summarize_trials(
         1 for t in trials if t["durations"]["study_completion"]["eligible_for_realized_duration"]
     )
     n_accrual_computed = sum(1 for t in trials if t["accrual"]["rate_status"] == "computed")
+    # Realized windows resting on a date with no registry type, each over the windows it could be.
+    untyped = untyped_window_counts(trials)
+    denominators["realized_primary_duration_trials"] = {
+        "n": n_realized_prim,
+        "definition": "Trials with a realized start-to-primary-completion duration.",
+    }
+    denominators["realized_study_duration_trials"] = {
+        "n": n_realized_study,
+        "definition": "Trials with a realized start-to-study-completion duration.",
+    }
+    denominators["accrual_rate_computed_trials"] = {
+        "n": n_accrual_computed,
+        "definition": "ACTUAL-enrollment trials with a computed monthly accrual velocity.",
+    }
     n_facility_computed = sum(
         1 for t in trials if t["accrual"]["facility_metric_status"] == "computed"
     )
@@ -325,12 +339,40 @@ def summarize_trials(
             "(weekly projection records without date types are excluded as date_type_unavailable_in_weekly_projection).",
         ),
         _count_item(
+            "realized_primary_duration_on_untyped_date",
+            "Realized start-to-primary-completion durations resting on a date with no type",
+            untyped["primary_duration"],
+            "realized_primary_duration_trials",
+            denominators,
+            "Realized start-to-primary-completion windows whose start or primary completion date struct "
+            "carries no registry type. They stay realized (an untyped date is not refused); the share is "
+            "published so the part of each duration benchmark resting on one stays visible.",
+        ),
+        _count_item(
+            "realized_study_duration_on_untyped_date",
+            "Realized start-to-study-completion durations resting on a date with no type",
+            untyped["study_duration"],
+            "realized_study_duration_trials",
+            denominators,
+            "Realized start-to-study-completion windows whose start or completion date struct carries no "
+            "registry type.",
+        ),
+        _count_item(
             "actual_accrual_rate_computed",
             "ACTUAL-enrollment trials with computable monthly accrual velocity",
             n_accrual_computed,
             "actual_enrollment_trials",
             denominators,
             "Trials with ACTUAL enrollment >= 0 and a positive realized calendar duration window.",
+        ),
+        _count_item(
+            "actual_accrual_rate_on_untyped_date",
+            "Computed accrual velocities resting on a date with no type",
+            untyped["actual_participants_per_month"],
+            "accrual_rate_computed_trials",
+            denominators,
+            "Computed monthly accrual velocities whose calendar window (calendar_window_used) has a start "
+            "or end date struct with no registry type.",
         ),
         _count_item(
             "actual_facility_metric_computed",
@@ -1078,8 +1120,10 @@ def check_contract(
         # itself be eligible for realized duration (so excluded windows, including weekly dates
         # with no recorded type, can never reach actual_participants_per_month).
         if acc.get("rate_status") == "computed":
+            # A window name that is not a string (a list, an object) raised TypeError in the lookup.
+            window = acc.get("calendar_window_used")
             window_dur = (t.get("durations") or {}).get(
-                ACCRUAL_WINDOW_DURATION_KEYS.get(acc.get("calendar_window_used"), "")
+                ACCRUAL_WINDOW_DURATION_KEYS.get(window, "") if isinstance(window, str) else ""
             ) or {}
             if window_dur.get("eligible_for_realized_duration") is not True:
                 problems.append(f"{nct}.accrual: velocity computed over a window not eligible for realized duration")
